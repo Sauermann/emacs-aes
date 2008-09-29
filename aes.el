@@ -17,11 +17,11 @@
 ;; Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ;; Boston, MA 02110-1301 USA
 
-;; Author: Markus Sauermann <mhoram@glory.to>
-;; Maintainer: Markus Sauermann <mhoram@glory.to>
+;; Author: Markus Sauermann <mhoram@gmx.de>
+;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
 ;; Version: 0.2
-;; Revision: $Id: aes.el 31 2008-09-28 00:02:18Z mhoram $
+;; Revision: $Id: aes.el 32 2008-09-28 18:18:31Z mhoram $
 ;; Keywords: data tools
 
 ;;; Change Log:
