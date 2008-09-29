@@ -10,20 +10,45 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; AES impementation
 
-(defun aes-ds (x)
-  "Return the string in its hexadecimal representation."
-  (let ((res ""))
-    (dotimes (i (length x)) (setq res (concat res (format "%02x" (aref x i)))))
-    res))
+;; (defun aes-ds (x)
+;;   "Return the string in its hexadecimal representation."
+;;   (let ((res ""))
+;;     (dotimes (i (length x))
+;;        (setq res (concat res (format "%02x" (aref x i)))))
+;;     res))
 
 (defun aes-xor (x y)
   "Return X and Y bytewise xored as string."
-  (let* ((l (length x)) (res (make-string l 0)))
-    (dotimes (i l)
-      (aset res i (logxor (aref x i) (aref y i))))
+  (let* ((l (length x))
+         (res (make-string l 0))
+         (i 0))
+    (while (< i l)
+      (aset res i (logxor (aref x i) (aref y i)))
+      (setq i (1+ i)))
     res))
 
-(defun aes-enlarge-to-multiple (v bs)
+(defsubst aes-xor-4 (x y)
+  "Return the 4 bytes long X and Y bytewise xored as string."
+  (string (logxor (aref x 0) (aref y 0))
+          (logxor (aref x 1) (aref y 1))
+          (logxor (aref x 2) (aref y 2))
+          (logxor (aref x 3) (aref y 3))))
+
+(defsubst aes-xor-4-b (x y)
+  "Return the 4 byte objects X and Y bytewise xored as new cons cell."
+  (cons (cons (logxor (car (car x)) (car (car y)))
+              (logxor (cdr (car x)) (cdr (car y))))
+        (cons (logxor (car (cdr x)) (car (cdr y)))
+              (logxor (cdr (cdr x)) (cdr (cdr y))))))
+
+(defsubst aes-xor-4-des-b (x y)
+  "xor X and Y bytewise destructively in X."
+  (setcar (car x) (logxor (car (car x)) (car (car y))))
+  (setcdr (car x) (logxor (cdr (car x)) (cdr (car y))))
+  (setcar (cdr x) (logxor (car (cdr x)) (car (cdr y))))
+  (setcdr (cdr x) (logxor (cdr (cdr x)) (cdr (cdr y)))))
+
+(defsubst aes-enlarge-to-multiple (v bs)
   "Enlarge string V to a multiple of BS and pad with Zeros."
   (concat v (make-string (mod (- (string-bytes v)) bs) 0)))
 
@@ -37,7 +62,7 @@
       (setq b (lsh b -1)))
     p))
 
-(defconst aes-Mul-Table
+(defconst aes-Mul-Table-pre
   (let ((l (make-string 256 0))
         (mt (make-vector 256 0)))
     (dotimes (i 256) (aset mt i (make-string 256 0)))
@@ -53,22 +78,30 @@
     (cons l mt))
   "Inverse and multiplication table.")
 
-(defconst aes-l2 (aref (cdr aes-Mul-Table) #x02))
-(defconst aes-l3 (aref (cdr aes-Mul-Table) #x03))
-(defconst aes-le (aref (cdr aes-Mul-Table) #x0e))
-(defconst aes-lb (aref (cdr aes-Mul-Table) #x0b))
-(defconst aes-ld (aref (cdr aes-Mul-Table) #x0d))
-(defconst aes-l9 (aref (cdr aes-Mul-Table) #x09))
+(defconst aes-Mul-Table
+  (cdr aes-Mul-Table-pre)
+  "Multiplication table.")
 
-(defun aes-Mul-Inv (x)
+(defconst aes-Inv-Table
+  (car aes-Mul-Table-pre)
+  "Inverse Table")
+
+(defconst aes-l2 (aref aes-Mul-Table #x02))
+(defconst aes-l3 (aref aes-Mul-Table #x03))
+(defconst aes-l9 (aref aes-Mul-Table #x09))
+(defconst aes-le (aref aes-Mul-Table #x0e))
+(defconst aes-lb (aref aes-Mul-Table #x0b))
+(defconst aes-ld (aref aes-Mul-Table #x0d))
+
+(defmacro aes-Mul-Inv (x)
   "Calculate inverse element of aes-multiplication."
-  (aref (car aes-Mul-Table) x))
+  `(aref aes-Inv-Table ,x))
 
-(defun aes-Mul (x y)
+(defmacro aes-Mul (x y)
   "Multiply x and y in GF2."
-  (aref (aref (cdr aes-Mul-Table) x) y))
+  `(aref (aref aes-Mul-Table ,x) ,y))
 
-(defconst aes-S-boxes
+(defconst aes-S-boxes-pre
   (let ((l1 (make-string 256 0))
         (l2 (make-string 256 0)))
     (dotimes (x 256)
@@ -92,37 +125,67 @@ It is a pair where the car-value contains the S-box used for encryption and
 the cdr-value contains the S-box used for decryption.
 The S-boxes are stored as strings of length 256.")
 
-(defun aes-SubBytes (x)
+(defconst aes-S-boxes-enc
+  (car aes-S-boxes-pre)
+  "Encryption S-Boxes")
+
+(defconst aes-S-boxes-dec
+  (cdr aes-S-boxes-pre)
+  "Decryption S-Boxes")
+
+(defsubst aes-SubBytes (x)
   "Apply the encryption S-box to each byte of the string X."
-  (let ((l (length x)))
-    (dotimes (i l) (aset x i (aref (car aes-S-boxes) (aref x i))))))
+  (let ((l (length x))
+        (i 0))
+    (while (< i l)
+      (aset x i (aref aes-S-boxes-enc (aref x i)))
+      (setq i (1+ i)))))
 
 (defun aes-InvSubBytes (x)
   "Apply the decryption S-box to each byte of the string X."
-  (let ((l (length x)))
-    (dotimes (i l) (aset x i (aref (cdr aes-S-boxes) (aref x i))))))
+  (let ((l (length x))
+        (i 0))
+    (while (< i l)
+      (aset x i (aref aes-S-boxes-dec (aref x i)))
+      (setq i (1+ i)))))
 
-(defun aes-SubWord (x)
+(defsubst aes-SubWord (x)
   "Apply the encryption S-box to all 4 bytes of the string X."
-  (dotimes (i 4) (aset x i (aref (car aes-S-boxes) (aref x i)))))
+  (aset x 0 (aref aes-S-boxes-enc (aref x 0)))
+  (aset x 1 (aref aes-S-boxes-enc (aref x 1)))
+  (aset x 2 (aref aes-S-boxes-enc (aref x 2)))
+  (aset x 3 (aref aes-S-boxes-enc (aref x 3))))
 
-(defun aes-InvSubWord (x)
-  "Apply the decryption S-box to all 4 bytes of the string X."
-  (dotimes (i 4) (aset x i (aref (cdr aes-S-boxes) (aref x i)))))
+(defsubst aes-SubWord-b (x)
+  "Apply the encryption S-box to all 4 bytes of X."
+  (setcar (car x) (aref aes-S-boxes-enc (car (car x))))
+  (setcdr (car x) (aref aes-S-boxes-enc (cdr (car x))))
+  (setcar (cdr x) (aref aes-S-boxes-enc (car (cdr x))))
+  (setcdr (cdr x) (aref aes-S-boxes-enc (cdr (cdr x)))))
+
+;; (defun aes-InvSubWord (x)
+;;   "Apply the decryption S-box to all 4 bytes of the string X."
+;;   (aset x 0 (aref aes-S-boxes-dec (aref x 0)))
+;;   (aset x 1 (aref aes-S-boxes-dec (aref x 1)))
+;;   (aset x 2 (aref aes-S-boxes-dec (aref x 2)))
+;;   (aset x 3 (aref aes-S-boxes-dec (aref x 3))))
 
 (defun aes-ShiftRows (state Nb)
   "Apply the shift rows transformation to state."
   (let ((x (aref state 1)) (c 1))
     (while (< c (lsh (- Nb 1) 2))
-      (aset state c (aref state (+ c 4)))  (setq c (+ c 4)))
+      (aset state c (aref state (+ c 4)))
+      (setq c (+ c 4)))
     (aset state c x))
   (let ((x (aref state 2)) (y (aref state 6)) (c 2))
-    (while (< c (lsh (- Nb 2) 2)) (aset state c (aref state (+ c 8)))
-           (setq c (+ c 4)))
+    (while (< c (lsh (- Nb 2) 2))
+      (aset state c (aref state (+ c 8)))
+      (setq c (+ c 4)))
     (aset state c x) (aset state (+ c 4) y))
   (let ((x (aref state 3)) (y (aref state 7)) (z (aref state 11)) (c 3))
-    (while (< c (lsh (- Nb 3) 2)) (aset state c (aref state (+ c 12)))
-           (setq c (+ c 4)))
+    (while (< c (lsh (- Nb 3) 2))
+      (aset state c (aref state (+ c 12)))
+      (setq c (+ c 4)))
     (aset state c x) (aset state (+ c 4) y) (aset state (+ c 8) z)))
 
 (defun aes-InvShiftRows (state Nb)
@@ -172,10 +235,10 @@ The S-boxes are stored as strings of length 256.")
   (let* ((l (length state))
          (copy (copy-sequence state)))
     (dotimes (x Nb)
-      (let ((s0 (aref (car aes-S-boxes) (aref copy (lsh x 2))))
-            (s1 (aref (car aes-S-boxes) (aref copy (% (+ (lsh x 2) 1 4) l))))
-            (s2 (aref (car aes-S-boxes) (aref copy (% (+ (lsh x 2) 2 8) l))))
-            (s3 (aref (car aes-S-boxes) (aref copy (% (+ (lsh x 2) 3 12) l)))))
+      (let ((s0 (aref aes-S-boxes-enc (aref copy (lsh x 2))))
+            (s1 (aref aes-S-boxes-enc (aref copy (% (+ (lsh x 2) 1 4) l))))
+            (s2 (aref aes-S-boxes-enc (aref copy (% (+ (lsh x 2) 2 8) l))))
+            (s3 (aref aes-S-boxes-enc (aref copy (% (+ (lsh x 2) 3 12) l)))))
         (aset state (lsh x 2) (logxor (aref aes-l2 s0) (aref aes-l3 s1) s2 s3))
         (aset state (1+ (lsh x 2))
               (logxor s0 (aref aes-l2 s1) (aref aes-l3 s2) s3))
@@ -194,19 +257,19 @@ The S-boxes are stored as strings of length 256.")
             (s2 (aref copy (+ 2 (lsh x 2))))
             (s3 (aref copy (+ 3 (lsh x 2)))))
         (aset state (lsh x 2)
-              (aref (cdr aes-S-boxes)
+              (aref aes-S-boxes-dec
                     (logxor (aref aes-le s0) (aref aes-lb s1)
                             (aref aes-ld s2) (aref aes-l9 s3))))
         (aset state (mod (+ 1 4 (lsh x 2)) l)
-              (aref (cdr aes-S-boxes)
+              (aref aes-S-boxes-dec
                     (logxor (aref aes-l9 s0) (aref aes-le s1)
                             (aref aes-lb s2) (aref aes-ld s3))))
         (aset state (mod (+ 2 8 (lsh x 2)) l)
-              (aref (cdr aes-S-boxes)
+              (aref aes-S-boxes-dec
                     (logxor (aref aes-ld s0) (aref aes-l9 s1)
                             (aref aes-le s2) (aref aes-lb s3))))
         (aset state (mod (+ 3 12 (lsh x 2)) l)
-              (aref (cdr aes-S-boxes)
+              (aref aes-S-boxes-dec
                     (logxor (aref aes-lb s0) (aref aes-ld s1)
                             (aref aes-l9 s2) (aref aes-le s3))))))))
 
@@ -215,10 +278,10 @@ The S-boxes are stored as strings of length 256.")
   (let* ((l (length state))
          (copy (copy-sequence state)))
     (dotimes (x Nb)
-      (let ((s0 (aref (car aes-S-boxes) (aref copy (lsh x 2))))
-            (s1 (aref (car aes-S-boxes) (aref copy (% (+ (lsh x 2) 1 4) l))))
-            (s2 (aref (car aes-S-boxes) (aref copy (% (+ (lsh x 2) 2 8) l))))
-            (s3 (aref (car aes-S-boxes) (aref copy (% (+ (lsh x 2) 3 12) l)))))
+      (let ((s0 (aref aes-S-boxes-enc (aref copy (lsh x 2))))
+            (s1 (aref aes-S-boxes-enc (aref copy (% (+ (lsh x 2) 1 4) l))))
+            (s2 (aref aes-S-boxes-enc (aref copy (% (+ (lsh x 2) 2 8) l))))
+            (s3 (aref aes-S-boxes-enc (aref copy (% (+ (lsh x 2) 3 12) l)))))
         (aset state (lsh x 2) (logxor (aref aes-l2 s0) (aref aes-l3 s1) s2 s3
                                       (aref keys (lsh (+ x (* r Nb)) 2))))
         (aset state (1+ (lsh x 2))
@@ -245,26 +308,37 @@ The S-boxes are stored as strings of length 256.")
             (s3 (logxor (aref copy (+ 3 (lsh x 2)))
                         (aref keys (+ 3 (lsh (+ x (* r Nb)) 2))))))
         (aset state (lsh x 2)
-              (aref (cdr aes-S-boxes)
+              (aref aes-S-boxes-dec
                     (logxor (aref aes-le s0) (aref aes-lb s1)
                             (aref aes-ld s2) (aref aes-l9 s3))))
         (aset state (mod (+ 1 4 (lsh x 2)) l)
-              (aref (cdr aes-S-boxes)
+              (aref aes-S-boxes-dec
                     (logxor (aref aes-l9 s0) (aref aes-le s1)
                             (aref aes-lb s2) (aref aes-ld s3))))
         (aset state (mod (+ 2 8 (lsh x 2)) l)
-              (aref (cdr aes-S-boxes)
+              (aref aes-S-boxes-dec
                     (logxor (aref aes-ld s0) (aref aes-l9 s1)
                             (aref aes-le s2) (aref aes-lb s3))))
         (aset state (mod (+ 3 12 (lsh x 2)) l)
-              (aref (cdr aes-S-boxes)
+              (aref aes-S-boxes-dec
                     (logxor (aref aes-lb s0) (aref aes-ld s1)
                             (aref aes-l9 s2) (aref aes-le s3))))))))
 
-(defun aes-RotWord (x)
+(defsubst aes-RotWord (x)
   "Rotate X by one byte.
 Append the first byte to the end."
-  (store-substring x 0 (concat (substring x 1 4) (substring x 0 1))))
+  (let ((te (aref x 0)))
+    (aset x 0 (aref x 1)) (aset x 1 (aref x 2)) (aset x 2 (aref x 3))
+    (aset x 3 te)))
+
+(defsubst aes-RotWord-b (x)
+  "Rotate X by one byte.
+Append the first byte to the end."
+  (let ((te (car (car x))))
+    (setcar (car x) (cdr (car x)))
+    (setcdr (car x) (car (cdr x)))
+    (setcar (cdr x) (cdr (cdr x)))
+    (setcdr (cdr x) te)))
 
 (defun aes-KeyExpansion (key Nb &optional Nr)
   "Return a string, which contains the Key expansion of KEY."
@@ -280,16 +354,81 @@ Append the first byte to the end."
         (if (= 0 (% i Nk2))
             (progn (aes-RotWord temp)
                    (aes-SubWord temp)
-                   (setq temp (aes-xor temp rcon))
+                   (setq temp (aes-xor-4 temp rcon))
                    (aset rcon 0 (aes-Mul (aref rcon 0) 2)))
           (if (and (< 6 Nk) (= (% (lsh i -2) Nk) 4))
               (aes-SubWord temp)))
         (store-substring
-         w i (aes-xor (substring w (- i Nk2) (+ 4 (- i Nk2))) temp)))
+         w i (aes-xor-4 (substring w (- i Nk2) (+ 4 (- i Nk2))) temp)))
       (setq i (+ i 4)))
     w))
+;; (prin1 (aes-str-to-b (aes-KeyExpansion "0123456789abcdef" 4)) 'insert)
+;(byte-compile 'aes-KeyExpansion)
+;(prin1
+;(let ((x "0123456789abcdef"))
+;(benchmark-run-compiled
+; 100000
+; (aes-KeyExpansion x 4)))
+;'insert)
+;(23.104 791 11.71399999999938)
+;(23.54 806 12.244000000000044)
 
-(defun aes-AddRoundKey (state keys r Nb)
+(defun aes-str-to-b (str)
+  (let (res
+        (l (length str))
+        (i 0))
+    (while (< i l)
+      (setq res (cons
+                 (cons (cons (aref str i) (aref str (1+ i)))
+                       (cons (aref str (+ i 2)) (aref str (+ i 3))))
+                 res))
+      (setq i (+ i 4)))
+    (nreverse res)))
+; (aes-str-to-b "0123456789abcdef")
+
+(defun aes-KeyExpansion-b (key Nb &optional Nr)
+  "Return a vector, which contains the Key expansion of KEY."
+  (let* ((Nk (length key))
+         (w (reverse key))
+         (i Nk)
+         (rcon (cons (cons 1 0) (cons 0 0)))
+         (Nk2 (lsh Nk 2))
+         (border (* Nb (1+ (or Nr (+ (max Nb Nk) 6)))))
+         (temp (cons (cons nil nil) (cons nil nil))))
+    (while (< i border)
+      (let ((f (car w)))
+        (setcar (car temp) (car (car f)))
+        (setcdr (car temp) (cdr (car f)))
+        (setcar (cdr temp) (car (cdr f)))
+        (setcdr (cdr temp) (cdr (cdr f)))
+        (if (= 0 (% i Nk))
+            (progn (aes-RotWord-b temp)
+                   (aes-SubWord-b temp)
+                   (aes-xor-4-des-b temp rcon)
+                   (setcar (car rcon) (aes-Mul (car (car rcon)) 2)))
+          (if (and (< 6 Nk) (= (% i Nk) 4))
+              (aes-SubWord-b temp)))
+        (setq w (cons (aes-xor-4-b (nth 3 w) temp) w))
+      (setq i (1+ i))))
+    (nreverse w)))
+;; (prin1 (aes-KeyExpansion-b (aes-str-to-b "0123456789abcdef") 4) 'insert)
+
+;(byte-compile 'aes-KeyExpansion-b)
+;(prin1 (symbol-function 'aes-KeyExpansion-b) 'insert)
+;(prin1
+;(let ((x (aes-str-to-b "0123456789abcdef")))
+;  (benchmark-run-compiled
+;      100000
+;      (aes-KeyExpansion-b x 4)))
+;'insert)
+;(9.751 245 4.413999999999767)
+;(10.280000000000001 281 5.1499999999997215)
+;(10.265 280 5.131999999999728)
+;(10.172 313 5.098999999999748)
+;(10.062000000000001 290 4.552999999999795)
+
+
+(defsubst aes-AddRoundKey (state keys r Nb)
   "Add the keys specified  by R and NB of KEYS to STATE."
   (dotimes (i (lsh Nb 2))
     (aset state i (logxor (aref state i) (aref keys (+ (lsh (* r Nb) 2) i))))))
@@ -487,7 +626,7 @@ blocksize."
 ;; ocb 2.0 implementation
 
 (defun aes-128-double (x)
-  "Double X in 128 bif field."
+  "Double X in 128 bit field."
   (let ((c (lsh (aref x 0) -7))
         (res (make-string 16 0)))
     (dotimes (i 15)
@@ -496,10 +635,9 @@ blocksize."
     (aset res 15 (logand #xff (logxor (lsh (aref x 15) 1) (* c #x87))))
     res))
 
-(defun aes-128-triple (x)
-  "Triple X in 128 bif field."
-  (let ((te (aes-128-double x)))
-    (aes-xor te x)))
+(defsubst aes-128-triple (x)
+  "Triple X in 128 bit field."
+  (aes-xor (aes-128-double x) x))
 
 (defun aes-num2str (x n)
   "Calculate the n-bit representation of x."
@@ -953,95 +1091,6 @@ Get the key for encryption by the function aes-key-from-passwd."
 
 ;; (aes-encrypt-buffer-or-string "address.xml" "CBC")
 
-(defun aes-decrypt-buffer-or-string-1-0 (bos)
-  "Old Version 1.0 of decrypt BOS.
-Kept for compatibility reasons.
-BOS is a buffer, a buffer name or a string."
-  (let* ((bs (or (bufferp bos) (get-buffer bos))) ; t: buffer nil: string
-         (sp (if bs (with-current-buffer bos
-                      (buffer-substring-no-properties (point-min) (point-max)))
-               bos)))
-    (if (not (string-match "aes-encrypted V 1.0-\\([BN]\\)\n" sp))
-        (message (concat "buffer or string '" bos
-                         "' is not properly encrypted."))
-      (let* ((b64 (equal "B" (match-string 1 sp)))
-             (res1 (substring sp (match-end 0)))
-             (res2 (if b64 (base64-decode-string res1) res1)))
-        (if (not (string-match
-                  "\\`\\([0-9]+\\) \\([0-9]+\\)\n"
-                  res2))
-            (message (concat "buffer or string '" bos
-                             "' is of wrong format."))
-          (let* ((Nb (string-to-number (match-string 1 res2)))
-                 (blocksize (lsh Nb 2))
-                 (Nk (string-to-number (match-string 2 res2)))
-                 (iv (substring res2 (match-end 0)
-                                (+ (match-end 0) blocksize)))
-                 (enc (substring res2 (+ (match-end 0) blocksize)))
-                 (passtype (if bs (aes-exec-passws-hooks
-                                       (buffer-file-name bos))
-                             "string"))
-                 (key (aes-key-from-passwd Nk "decryption" passtype))
-                 (keys (aes-KeyExpansion key Nb))
-                 (res3 (aes-cbc-decrypt enc iv keys Nb)))
-            (if (not (string-match
-                      "\\`\\([UM]\\) \\([0-9]+\\)\n"
-                      res3))
-                (message (concat "buffer or string '" bos
-                                 "' could not be decrypted."))
-              (let* ((um (equal (match-string 1 res3) "M"))
-                     (l (string-to-number (match-string 2 res3)))
-                     (res (substring res3 (match-end 0) (+ (match-end 0) l))))
-                (if bs (with-current-buffer bos
-                         (erase-buffer) (set-buffer-multibyte nil)
-                         (insert res) (set-buffer-multibyte um)
-                         t)
-                  (if um (aes-toggle-representation res) res))))))))))
-
-(defun aes-decrypt-buffer-or-string-1-1 (bos)
-  "Old Version 1.1 of decrypt BOS.
-Kept for compatibility reasons.
-BOS is a buffer, a buffer name or a string.
-If BOS is a string matching the name of a buffer, then this buffer is used.
-Get the key for encryption by the function aes-key-from-passwd."
-  (let* ((bs (or (bufferp bos) (get-buffer bos))) ; t: buffer nil: string
-         (sp (if bs (with-current-buffer bos
-                      (buffer-substring-no-properties (point-min) (point-max)))
-               bos)))
-    (if (not (string-match
-              "aes-encrypted V 1.1-\\([BN]\\)-\\([0-9]+\\)-\\([0-9]+\\)\n" sp))
-        (aes-decrypt-buffer-or-string-1-0 bos)
-      (let* ((b64 (equal "B" (match-string 1 sp)))
-             (Nb (string-to-number (match-string 2 sp)))
-             (blocksize (lsh Nb 2))
-             (Nk (string-to-number (match-string 3 sp)))
-             (res1 (substring sp (match-end 0)))
-             (res2 (if b64 (base64-decode-string res1) res1))
-             (iv (substring res2 0 blocksize))
-             (enc (substring res2 blocksize))
-             (passtype (if bs
-                           (aes-exec-passws-hooks (buffer-file-name bos))
-                         "string"))
-             (key (aes-key-from-passwd Nk "decryption" passtype))
-             (keys (aes-KeyExpansion key Nb))
-             (res3 (aes-cbc-decrypt enc iv keys Nb)))
-        (if (not (string-match
-                  "\\`\\([UM]\\) \\([0-9]+\\)\n"
-                  res3))
-            (message (concat "buffer or string '" bos
-                             "' could not be decrypted."))
-          (let* ((um (equal (match-string 1 res3) "M"))
-                 (l (string-to-number (match-string 2 res3)))
-                 (res (substring res3 (match-end 0) (+ (match-end 0) l))))
-            (if bs (with-current-buffer bos
-                     (erase-buffer) (set-buffer-multibyte nil)
-                     (insert res) (set-buffer-multibyte um)
-                     (setq buffer-file-coding-system
-                           (car (find-coding-systems-region
-                                 (point-min) (point-max))))
-                     t)
-              (if um (aes-toggle-representation res) res))))))))
-
 (defun aes-decrypt-buffer-or-string (bos)
   "Decrypt BOS V 1.2.
 BOS is a buffer, a buffer name or a string.
@@ -1054,7 +1103,8 @@ Get the key for encryption by the function aes-key-from-passwd."
     (if (not (string-match
               (concat "aes-encrypted V 1.2-\\(CBC\\|OCB\\)-"
                       "\\([BN]\\)-\\([0-9]+\\)-\\([0-9]+\\)-\\([MU]\\)\n") sp))
-        (aes-decrypt-buffer-or-string-1-1 bos)
+        (message (concat "buffer or string '" bos
+                         "' is not properly encrypted."))
       (let* ((type (match-string 1 sp))
              (b64 (equal "B" (match-string 2 sp)))
              (Nb (string-to-number (match-string 3 sp)))
