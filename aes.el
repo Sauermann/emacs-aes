@@ -466,73 +466,128 @@ Assumes that input and keys are of the correct length."
 ;;   (substring dec 0 l))
 
 
-
-(defun aes-encrypt-string (s &optional Nb Nk)
-  (unless Nb (setq Nb 4)) ;; default blocksize of 16 byte / 128 bit
-  (unless Nk (setq Nk 4)) ;; default keysize of 16 byte / 128 bit
-  (let* ((Nr (+ Nk 6))
-         (pre-passwd (let ((p ""))
-                       (while (equal p "")
-                         (setq p (read-passwd "Password for encryption: ")))
-                       p))
+(defun aes-key-from-passwd (Nk type)
+  (let* ((pre-passwd (if nil "a"
+                       (let ((p ""))
+                         (while (equal p "")
+                           (setq p (read-passwd (concat "Password for " type ": "))))
+                         p)))
          (passwd (aes-enlarge-to-multiple pre-passwd (lsh Nk 2)))
          (passwdiv (make-string (lsh Nk 2) 0))
          (passwdkeys (aes-KeyExpansion passwd Nk))
          (passwdcbc (aes-cbc-encrypt passwd passwdiv passwdkeys Nk))
-         (key (substring passwdcbc (- (lsh Nk 2))))
-         (keys (aes-KeyExpansion passwd Nb))
-         (l (length s))
+         (key (substring passwdcbc (- (lsh Nk 2)))))
+    key))
+
+(defun aes-toggle-representation (s)
+  (let ((mb (multibyte-string-p s)))
+    (with-temp-buffer
+      (if (not mb) (set-buffer-multibyte nil))
+      (insert s)
+      (set-buffer-multibyte (not mb))
+      (buffer-substring-no-properties (point-min) (point-max)))))
+
+(defun aes-encrypt-buffer-or-string (bos &optional Nk Nb non-b64)
+  (unless Nk (setq Nk 4)) ;; default keysize of 16 byte / 128 bit
+  (unless Nb (setq Nb 4)) ;; default blocksize of 16 byte / 128 bit
+  (let* ((Nr (+ Nk 6))
+         (key (aes-key-from-passwd Nk "encryption"))
+         (keys (aes-KeyExpansion key Nb))
          (iv (let ((x (make-string (lsh Nb 2) 0)))
                (dotimes (i (lsh Nb 2)) (aset x i (random 256)))
-               x)))
-    (concat (number-to-string Nb) " " (number-to-string Nk) " " (number-to-string l) "\n" iv (aes-cbc-encrypt s iv keys Nb))))
+               x))
+         (bs (or (bufferp bos) (get-buffer bos))) ; t: buffer nil: string
+         (ums (if bs (with-current-buffer bos
+                       (cons (if enable-multibyte-characters
+                                 (progn (set-buffer-multibyte nil) "M")
+                               "U")
+                             (buffer-substring-no-properties
+                              (point-min) (point-max))))
+                (if (multibyte-string-p bos)
+                    (cons "M" (aes-toggle-representation bos))
+                  (cons "U" bos))))
+         (l (length (cdr ums)))
+         (res1 (concat (car ums) " "
+                       (number-to-string l) "\n"
+                       (cdr ums)))
+         (res2 (concat (number-to-string Nb) " "
+                       (number-to-string Nk) "\n"
+                       iv
+                       (aes-cbc-encrypt res1 iv keys Nb)))
+         (res3 (if non-b64 res2 (base64-encode-string res2)))
+         (res (concat "aes-encrypted V 1.0-" (if non-b64 "N" "B") "\n" res3)))
+    (if bs (with-current-buffer bos
+             (erase-buffer)
+             (insert res)
+             t)
+      res)))
 
-;; (aes-encrypt-string "hallo" 4 4)
+(defun aes-decrypt-buffer-or-string (bos)
+  "Decrypt BOS.
+BOS is a buffer, a buffer name or a string."
+  (let* ((bs (or (bufferp bos) (get-buffer bos))) ; t: buffer nil: string
+         (sp (if bs (with-current-buffer bos
+                      (buffer-substring-no-properties (point-min) (point-max)))
+               bos)))
+    (if (not (string-match "aes-encrypted V 1.0-\\([BN]\\)\n" sp))
+        (message (concat "buffer or string '" bos
+                         "' not properly aes encrypted."))
+      (let* ((b64 (equal "B" (match-string 1 sp)))
+             (res1 (substring sp (match-end 0)))
+             (res2 (if b64 (base64-decode-string res1) res1)))
+        (if (not (string-match
+                  "\\`\\([0-9]+\\) \\([0-9]+\\)\n"
+                  res2))
+            (message (concat "buffer or string '" bos
+                             "' not properly aes encrypted."))
+          (let* ((Nb (string-to-number (match-string 1 res2)))
+                 (blocksize (lsh Nb 2))
+                 (Nk (string-to-number (match-string 2 res2)))
+                 (iv (substring res2 (match-end 0) (+ (match-end 0) blocksize)))
+                 (enc (substring res2 (+ (match-end 0) blocksize)))
+                 (key (aes-key-from-passwd Nk "decryption"))
+                 (keys (aes-KeyExpansion key Nb))
+                 (res3 (aes-cbc-decrypt enc iv keys Nb)))
+            (if (not (string-match
+                      "\\`\\([UM]\\) \\([0-9]+\\)\n"
+                      res3))
+                (message (concat "buffer or string '" bos
+                                 "' not properly aes encrypted."))
+              (let* ((um (equal (match-string 1 res3) "M"))
+                     (l (string-to-number (match-string 2 res3)))
+                     (res (substring res3 (match-end 0) (+ (match-end 0) l))))
+                (if bs (with-current-buffer bos
+                         (erase-buffer) (set-buffer-multibyte nil)
+                         (insert res) (set-buffer-multibyte um)
+                         t)
+                  (if um (aes-toggle-representation res) res))))))))))
 
-(defun aes-decrypt-string (o)
-  (if (string-match "\\`\\([0-9]+\\) \\([0-9]+\\) \\([0-9]+\\)\n" o)
-      (let* ((me (match-end 0))
-             (Nb (string-to-number (match-string 1 o)))
-             (Nk (string-to-number (match-string 2 o)))
-             (l (string-to-number (match-string 3 o)))
-             (wirr (substring o me))
-             (blocksize (lsh Nb 2))
-             (iv (substring wirr 0 blocksize))
-             (s (substring wirr blocksize))
-             (Nr (+ Nk 6))
-             (pre-passwd (let ((p ""))
-                           (while (equal p "")
-                             (setq p (read-passwd "Password for decryption: ")))
-                           p))
-             (passwd (aes-enlarge-to-multiple pre-passwd (lsh Nk 2)))
-             (passwdiv (make-string (lsh Nk 2) 0))
-             (passwdkeys (aes-KeyExpansion passwd Nk))
-             (passwdcbc (aes-cbc-encrypt passwd passwdiv passwdkeys Nk))
-             (key (substring passwdcbc (- (lsh Nk 2))))
-             (keys (aes-KeyExpansion passwd Nb))
-             )
-        (substring (aes-cbc-decrypt s iv keys Nb) 0 l))))
+;; (aes-encrypt-buffer-or-string "maybe.gtd")
+;; (aes-decrypt-buffer-or-string "maybe.gtd")
+;; (aes-decrypt-buffer-or-string (aes-encrypt-buffer-or-string "äöüß"))
 
-(defun aes-encrypt-buffer (n &optional Nb Nk)
-  (unless Nb (setq Nb 4)) ;; default blocksize of 16 byte / 128 bit
-  (unless Nk (setq Nk 4)) ;; default keysize of 16 byte / 128 bit
-  (with-current-buffer n
-    (set-buffer-multibyte nil)
-    (let* ((s (buffer-substring-no-properties (point-min) (point-max)))
-           (enc (aes-encrypt-string s Nb Nk)))
-      (erase-buffer)
-      (insert enc))))
+;; (aes-toggle-representation (aes-toggle-representation "jklä"))
 
-(defun aes-decrypt-buffer (n)
-  (with-current-buffer n
-    (let* ((s (buffer-substring-no-properties (point-min) (point-max)))
-           (dec (aes-decrypt-string s)))
-      (erase-buffer)
-      (insert dec)
-      (set-buffer-multibyte t))))
+(defun aes-to-fn (be en bu)
+  "aes file format encryption."
+  (aes-encrypt-buffer-or-string bu nil nil t)
+  (point-max))
 
-;; (aes-encrypt-buffer "maybe.gtd")
-;; (aes-decrypt-buffer "maybe.gtd")
+(defun aes-from-fn (be en)
+  "aes file format decryption."
+  (aes-decrypt-buffer-or-string (current-buffer))
+  (point-max))
+
+(setq format-alist
+      (cons (list 'aes
+                  "AES-Format"
+                  "aes-encrypted V [0-9].[0-9]-[BN]+\n"
+                  'aes-from-fn
+                  'aes-to-fn
+                  t
+                  nil)
+            format-alist))
+
 
 ;(let* ((str "hallo")
 ;       (l (length str))
@@ -541,6 +596,5 @@ Assumes that input and keys are of the correct length."
 ;       (r1 (aes-encrypt-string str Nb Nk))
 ;       )
 ;  (aes-decrypt-string r1))
-
 
 (provide 'aes)
