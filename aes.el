@@ -1,14 +1,12 @@
 ;;; aes.el --- Implementation of AES in elisp
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; AES impementation
 
 (defun aes-ds (x)
   "Return the string in its hexadecimal representation."
   (let ((res ""))
-    (dotimes (i (length x))
-      (setq res (concat res
-                        (format "%02x" (aref x i)))))
+    (dotimes (i (length x)) (setq res (concat res (format "%02x" (aref x i)))))
     res))
 
 (defun aes-mul-pre (a b)
@@ -16,8 +14,7 @@
   (let ((p 0))
     (dotimes (c 8)
       (if (= 1 (logand b 1)) (setq p (logxor a p)))
-      (if (prog1 (= #x80 (logand a #x80))
-            (setq a (logand #xff (lsh a 1))))
+      (if (prog1 (= #x80 (logand a #x80)) (setq a (logand #xff (lsh a 1))))
           (setq a (logxor a #x1b)))
       (setq b (lsh b -1)))
     p))
@@ -25,16 +22,13 @@
 (defconst aes-Mul-Table
   (let ((l (make-string 256 0))
         (mt (make-vector 256 0)))
-    (dotimes (i 256)
-      (aset mt i (make-string 256 0)))
+    (dotimes (i 256) (aset mt i (make-string 256 0)))
     (dotimes (x 256)
       (if (< 0 x)
           (let ((i x))
             (while (< i 256)
               (let ((res (aes-mul-pre i x)))
-                (if (= #x01 res)
-                    (progn (aset l x i)
-                           (aset l i x)))
+                (if (= #x01 res) (progn (aset l x i) (aset l i x)))
                 (aset (aref mt x) i res)
                 (aset (aref mt i) x res))
               (setq i (1+ i))))))
@@ -84,6 +78,7 @@ The S-boxes are stored as strings of length 256.")
   "Apply the encryption S-box to each byte of the string X."
   (let ((l (length x)))
     (dotimes (i l) (aset x i (aref (car aes-S-boxes) (aref x i))))))
+
 (defun aes-InvSubBytes (x)
   "Apply the decryption S-box to each byte of the string X."
   (let ((l (length x)))
@@ -189,15 +184,10 @@ The S-boxes are stored as strings of length 256.")
                     (logxor (aref aes-lb s0) (aref aes-ld s1)
                             (aref aes-l9 s2) (aref aes-le s3))))))))
 
-;; (let (( s (concat [#x63 #x53 #xe0 #x8c #x09 #x60 #xe1 #x04 #xcd #x70 #xb7
-;;                    #x51 #xba #xca #xd0 #xe7])))
-;;   (aes-MixColumns s Nb)
-;;   (aes-InvMixColumns s Nb)
-;;   (aes-ds s))
-
 (defun aes-SubWord (x)
   "Apply the encryption S-box to all 4 bytes of the string X."
   (dotimes (i 4) (aset x i (aref (car aes-S-boxes) (aref x i)))))
+
 (defun aes-InvSubWord (x)
   "Apply the decryption S-box to all 4 bytes of the string X."
   (dotimes (i 4) (aset x i (aref (cdr aes-S-boxes) (aref x i)))))
@@ -214,11 +204,11 @@ The S-boxes are stored as strings of length 256.")
 Append the first byte to the end."
   (store-substring x 0 (concat (substring x 1 4) (substring x 0 1))))
 
-(defun aes-KeyExpansion (key Nb)
+(defun aes-KeyExpansion (key Nb &optional Nr)
   "Return a string, which contains the Key expansion of KEY."
   (let* ((Nk (lsh (length key) -2))
-         (Nr (+ Nk 6))
-         (w (make-string (* 4 Nb (1+ Nr)) 0))
+         (w (progn (unless Nr (setq Nr (+ (max Nb Nk) 6)))
+                   (make-string (* 4 Nb (1+ Nr)) 0)))
          (i (lsh Nk 2))
          (rcon (concat (make-string 1 1) (make-string 3 0)))
          (Nk2 (lsh Nk 2)))
@@ -240,15 +230,14 @@ Append the first byte to the end."
 (defun aes-AddRoundKey (state keys r Nb)
   "Add the keys specified  by R and NB of KEYS to STATE."
   (dotimes (i (lsh Nb 2))
-    (aset state i (logxor (aref state i)
-                          (aref keys (+ (lsh (* r Nb) 2) i))))))
+    (aset state i (logxor (aref state i) (aref keys (+ (lsh (* r Nb) 2) i))))))
 
-(defun aes-Cipher-reference (input keys Nb)
+(defun aes-Cipher-reference (input keys Nb &optional Nr)
   "Perform the AES encryption."
   (let* ((Nk (- (/ (lsh (length keys) -2) Nb) 7))
          (state (make-string (lsh Nb 2) 0))
-         (Nr (+ Nk 6))
          (r 1))
+    (unless Nr (setq Nr (+ (max Nb Nk) 6)))
     (store-substring state 0 input)
     (aes-AddRoundKey state keys 0 Nb)
     (while (< r Nr)
@@ -262,13 +251,13 @@ Append the first byte to the end."
     (aes-AddRoundKey state keys Nr Nb)
     state))
 
-(defun aes-Cipher (input keys Nb)
+(defun aes-Cipher (input keys Nb &optional Nr)
   "Perform the AES encryption.
 Assumes that input and keys are of the correct length."
   (let* ((Nk (- (/ (lsh (length keys) -2) Nb) 7))
          (state (make-string (lsh Nb 2) 0))
-         (r 1)
-         (Nr (+ Nk 6)))
+         (r 1))
+    (unless Nr (setq Nr (+ (max Nb Nk) 6)))
     (store-substring state 0 input)
     (aes-AddRoundKey state keys 0 Nb)
     (while (< r Nr)
@@ -280,12 +269,12 @@ Assumes that input and keys are of the correct length."
     (aes-AddRoundKey state keys Nr Nb)
     state))
 
-(defun aes-InvCipher-reference (input keys Nb)
+(defun aes-InvCipher-reference (input keys Nb &optional Nr)
   "Perform the AES decryption."
   (let* ((Nk (- (/ (lsh (length keys) -2) Nb) 7))
-         (Nr (+ Nk 6))
          (state (make-string (lsh Nb 2) 0))
-         (r (- Nr 1)))
+         (r (progn (unless Nr (setq Nr (+ (max Nb Nk) 6)))
+                   (- Nr 1))))
     (store-substring state 0 input)
     (aes-AddRoundKey state keys Nr Nb)
     (aes-InvShiftRows state Nb)
@@ -299,12 +288,12 @@ Assumes that input and keys are of the correct length."
     (aes-AddRoundKey state keys 0 Nb)
     state))
 
-(defun aes-InvCipher (input keys Nb)
+(defun aes-InvCipher (input keys Nb &optional Nr)
   "Perform the AES decryption."
   (let* ((Nk (- (/ (lsh (length keys) -2) Nb) 7))
-         (Nr (+ Nk 6))
          (state (make-string (lsh Nb 2) 0))
-         (r (- Nr 1)))
+         (r (progn (unless Nr (setq Nr (+ (max Nb Nk) 6)))
+                   (- Nr 1))))
     (store-substring state 0 input)
     (aes-AddRoundKey state keys Nr Nb)
     (aes-InvShiftRows state Nb)
@@ -355,6 +344,144 @@ Assumes that input and keys are of the correct length."
 ;; ;; (save-selected-window (aes-profile 10000))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ocb 2.0 implementation
+
+(defun aes-128-double (x)
+  "Double X in 128 bif field."
+  (let ((c (lsh (aref x 0) -7))
+        (res (make-string 16 0)))
+    (dotimes (i 15)
+      (aset res i (logand #xff (logxor (lsh (aref x i) 1)
+                                       (lsh (aref x (+ i 1)) -7)))))
+    (aset res 15 (logand #xff (logxor (lsh (aref x 15) 1) (* c #x87))))
+    res))
+
+(defun aes-128-triple (x)
+  "Triple X in 128 bif field."
+  (let ((te (aes-128-double x)))
+    (aes-xor te x)))
+
+(defun aes-num2str (x n)
+  "Calculate the n-bit representation of x."
+  (let ((res (make-string n 0))
+        (offset (- n 1)))
+    (while (< 0 x)
+      (aset res offset (logand x #xff))
+      (setq x (lsh x -8))
+      (setq offset (- offset 1)))
+    res))
+
+(defun aes-pmac (header keys Nb)
+  "Calculate aes-PMAC of header using keys."
+  (let* ((l (length header))
+         (blocksize (lsh Nb 2))
+         (whole-blocks (/ l blocksize))
+         (total-blocks (max 1 (+ whole-blocks (if (= 0 (% l blocksize)) 0 1))))
+         (b (if (= whole-blocks total-blocks) blocksize (% l blocksize)))
+         (D (aes-128-triple
+             (aes-128-triple (aes-Cipher (make-string blocksize 0) keys Nb))))
+         (checksum (make-string blocksize 0))
+         )
+    (dotimes (i (- total-blocks 1))
+      (setq D (aes-128-double D))
+      (setq checksum
+            (aes-xor checksum
+                     (aes-Cipher (aes-xor D (substring header (* i blocksize)
+                                                       (* (+ i 1) blocksize)))
+                                 keys Nb))))
+    (setq D  (aes-128-double D))
+    (if (= b blocksize)
+        (progn (setq D (aes-128-triple D))
+               (setq checksum
+                     (aes-xor checksum
+                              (substring header
+                                         (* blocksize (- total-blocks 1))))))
+      (setq D (aes-128-triple (aes-128-triple D)))
+      (setq checksum
+            (aes-xor checksum
+                     (concat (substring header
+                                        (* blocksize (- total-blocks 1)))
+                             (make-string 1 #x80)
+                             (make-string (- blocksize
+                                             (+ 1 b)) 0)))))
+    (aes-Cipher (aes-xor D checksum) keys Nb)))
+
+(defun aes-ocb-encrypt (header input iv keys Nb)
+  "OCB encrypt input and calculate auth of header and input."
+  (let* ((D (aes-Cipher iv keys Nb))
+         (C "")
+         (T "")
+         (checksum (make-string (lsh Nb 2) 0))
+         (l (length input))
+         (blocksize (lsh Nb 2))
+         (whole-blocks (/ l blocksize))
+         (total-blocks (max 1 (+ whole-blocks (if (= 0 (% l blocksize)) 0 1))))
+         (b (if (= whole-blocks total-blocks) blocksize (% l blocksize)))
+         )
+;;    (list whole-blocks last-bytes total-blocks)))
+    (dotimes (i (- total-blocks 1))
+      (setq D (aes-128-double D))
+      (setq checksum (aes-xor checksum (substring input (* i blocksize)
+                                                  (* (+ i 1) blocksize))))
+      (setq C (concat C (aes-xor D (aes-Cipher
+                                    (aes-xor D (substring
+                                                input (* i blocksize)
+                                                (* (+ i 1) blocksize)))
+                                    keys Nb)))))
+    (setq D (aes-128-double D))
+    (let ((pad (aes-Cipher (aes-xor (aes-num2str (* 8 b) blocksize)
+                                    D)
+                           keys
+                           Nb))
+          (Mm (substring input (* blocksize (- total-blocks 1)))))
+      (setq C (concat C (aes-xor Mm (substring pad 0 b))))
+      (setq checksum (aes-xor checksum (concat Mm (substring pad b)))))
+    (setq D (aes-128-triple D))
+    (setq T (aes-Cipher (aes-xor checksum D) keys Nb))
+    (if (< 0 (length header)) (setq T (aes-xor T (aes-pmac header keys Nb))))
+    (cons C T)))
+
+(defun aes-ocb-decrypt (header input tag iv keys Nb)
+  "OCB decrypt input and verify authentication tag of header and input."
+  (let* ((D (aes-Cipher iv keys Nb))
+         (M "")
+         (l (length input))
+         (blocksize (lsh Nb 2))
+         (checksum (make-string blocksize 0))
+         (whole-blocks (/ l blocksize))
+         (total-blocks (max 1 (+ whole-blocks (if (= 0 (% l blocksize)) 0 1))))
+         (b (if (= whole-blocks total-blocks) blocksize (% l blocksize)))
+         )
+    (dotimes (i (- total-blocks 1))
+      (setq D (aes-128-double D))
+      (let ((Mi (aes-xor D (aes-InvCipher
+                            (aes-xor D (substring input (* i blocksize)
+                                                  (* (+ i 1) blocksize)))
+                            keys Nb))))
+        (setq M (concat M Mi))
+        (setq checksum (aes-xor checksum Mi))))
+    (setq D (aes-128-double D))
+    (let* ((pad (aes-Cipher (aes-xor (aes-num2str (* 8 b) blocksize)
+                                     D)
+                            keys
+                            Nb))
+           (Mm (aes-xor (substring
+                         input (* blocksize (- total-blocks 1)))
+                        (substring pad 0 b))))
+      (setq M (concat M Mm))
+      (setq checksum
+            (aes-xor checksum
+                     (concat Mm (substring pad b)))))
+    (setq D (aes-128-triple D))
+    (let ((T (aes-Cipher (aes-xor D checksum) keys Nb)))
+      (if (< 0 (length header))
+          (setq T (aes-xor T (aes-pmac header keys Nb))))
+      (if (equal tag
+                 (substring T 0 (length tag)))
+          (cons t M)
+        (cons nil "")))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; cbc implementation
 
 (defun aes-enlarge-to-multiple (v bs)
@@ -366,7 +493,7 @@ Assumes that input and keys are of the correct length."
 Use IV as initialization vector, KEYS as the key expansion and Nb as
 blocksize."
   (let* ((Nk (- (/ (lsh (length keys) -2) Nb) 7))
-         (Nr (+ Nk 6))
+         (Nr (+ (max Nb Nk) 6))
          (blocksize (lsh Nb 2))
          (res (aes-enlarge-to-multiple input blocksize))
          (blocknumber (/ (string-bytes res) blocksize))
@@ -385,7 +512,7 @@ blocksize."
 Use IV as initialization vector, KEYS as the key expansion and Nb as
 blocksize."
   (let* ((Nk (- (/ (lsh (length keys) -2) Nb) 7))
-         (Nr (+ Nk 6))
+         (Nr (+ (max Nb Nk) 6))
          (blocksize (lsh Nb 2))
          (res (aes-enlarge-to-multiple input blocksize))
          (blocknumber (/ (string-bytes res) blocksize))
@@ -408,7 +535,7 @@ blocksize."
   "Always ask for passwords, if non-nil.
 Set this to nil, if you are risky.
 If this variable is set to a non-nil value, then no passwords are stored in
-aes-plaintext-keys."
+aes-plaintext-passwords."
   :type 'boolean
   :group 'aes)
 
@@ -416,22 +543,41 @@ aes-plaintext-keys."
   "Store passwords in emacs-memory in plaintext, if non-nil.
 Set this to a non-nil value, if you are risky.
 Enabling this feature allows someone to read the passwords in plaintext by
-accessing the variable aes-plaintext-keys.
+accessing the variable aes-plaintext-passwords.
 If changing the value from non-nil to nil, then the passwords stored in
-aes-plaintext-keys are not deleted automatically."
+aes-plaintext-passwords are not deleted automatically."
   :type 'boolean
   :group 'aes)
 
-(defvar aes-plaintext-keys ()
+(defvar aes-plaintext-passwords ()
   "Association list of plaintext passwords.
 Warning: passwords are stored in plaintext and can be read by anyone with
 access to the current emacs session.")
-;; (setq aes-plaintext-keys)
+;; (setq aes-plaintext-passwords)
 
 (defun aes-clear-plaintext-keys ()
   "Remove all stored passwords."
   (interactive)
-  (setq aes-plaintext-keys))
+  (setq aes-plaintext-passwords))
+
+(defun aes-idle-clear-plaintext-keys ()
+  "Remove all stored passwords."
+  (setq aes-plaintext-passwords)
+  (setq aes-idle-timer-value nil)
+  (with-current-buffer "*Messages*"
+    (erase-buffer))
+  (message "AES Passwords cleared."))
+
+(defcustom aes-delete-passwords-after-idle 1
+  "Delete the stored passwords after the given time.
+This is disabled, if the value is 0. Otherwise the number is
+interpreted as seconds for emacs to be idle before the deletion
+happens."
+  :type 'integer
+  :group 'aes)
+
+(defvar aes-idle-timer-value nil
+  "Reference to idle timer.")
 
 (defvar aes-path-passwd-hook ()
   "Hook for testing paths.
@@ -452,15 +598,15 @@ Return a string resulting from one of the hook functions or NIL otherwise."
 (defun aes-key-from-passwd (Nk &optional type)
   "Return a key, generated from a password.
 If aes-use-plaintext-keys is nil and aes-disable-global-plaintext-keys is
-non-nil, then use aes-plaintext-keys for storing and reading passwords.
+non-nil, then use aes-plaintext-passwords for storing and reading passwords.
 Query the password from the user if it is not available via
-aes-plaintext-keys."
+aes-plaintext-passwords."
   (unless type (setq type "usage"))
   (let* ((pre-passwd
           (if (and (not aes-always-ask-for-passwords)
                    aes-enable-plaintext-password-storage
-                   (assoc type aes-plaintext-keys))
-              (cdr (assoc type aes-plaintext-keys))
+                   (assoc type aes-plaintext-passwords))
+              (cdr (assoc type aes-plaintext-passwords))
             (let ((p ""))
               (while (equal p "")
                 (setq p (read-passwd (concat "Password for "
@@ -470,8 +616,20 @@ aes-plaintext-keys."
                        (not
                         (string-match "^usage$\\|^encryption$\\|^decryption$"
                                       type)))
-                  (setq aes-plaintext-keys
-                        (cons (cons type p) aes-plaintext-keys)))
+                  (progn
+                    (setq aes-plaintext-passwords
+                          (cons (cons type p) aes-plaintext-passwords))
+                    ;; reset idle timer
+                    (if aes-idle-timer-value
+                        (progn (cancel-timer aes-idle-timer-value)
+                               (setq aes-idle-timer-value nil)))
+                    ;; set new idle timer
+                    (if (< 0 aes-delete-passwords-after-idle)
+                        (setq aes-idle-timer-value
+                              (run-with-idle-timer
+                               aes-delete-passwords-after-idle
+                               nil
+                               'aes-idle-clear-plaintext-keys)))))
               p)))
          (passwd (aes-enlarge-to-multiple pre-passwd (lsh Nk 2)))
          (passwdiv (make-string (lsh Nk 2) 0))
@@ -493,48 +651,66 @@ Return a new string containing the other representation."
       (set-buffer-multibyte (not mb))
       (buffer-substring-no-properties (point-min) (point-max)))))
 
-(defun aes-encrypt-buffer-or-string (bos &optional Nk Nb non-b64)
+(defcustom aes-discard-undo-after-encryption t
+  "Delete undo information after encryption, if non-nil."
+ :type 'boolean
+  :group 'aes)
+
+(defun aes-encrypt-buffer-or-string (bos &optional type Nk Nb non-b64)
   "Encrypt buffer or string bos by the AES-method.
 If BOS is a string matching the name of a buffer, then this buffer is used.
+Use method TYPE. (OCB or CBC with OCB as default)
 Use Nk as keysize (defaults to 4).
-Use Nb as blocksite (defaults to 4).
+Use Nb as blocksite (defaults to 4 and is always 4 for OCB).
 Use base64-encoding if non-b64 is NIL, and binary representation otherwise
 \(defaults to NIL).
 Use a weak-random initialization vector.
 Get the key for encryption by the function aes-key-from-passwd."
+  (unless type (setq type "OCB")) ;; default to OCB
   (unless Nk (setq Nk 4)) ;; default keysize of 16 byte / 128 bit
   (unless Nb (setq Nb 4)) ;; default blocksize of 16 byte / 128 bit
-  (let* ((Nr (+ Nk 6))
-         (bs (or (bufferp bos) (get-buffer bos))) ; t: buffer nil: string
-         (passtype (or (if bs (aes-exec-passws-hooks (buffer-file-name bos)))
-                       "encryption"))
-         (key (aes-key-from-passwd Nk passtype))
-         (keys (aes-KeyExpansion key Nb))
-         (iv (let ((x (make-string (lsh Nb 2) 0)))
-               (dotimes (i (lsh Nb 2)) (aset x i (random 256)))
-               x))
-         (ums (if bs (with-current-buffer bos
-                       (cons (if enable-multibyte-characters
-                                 (progn (set-buffer-multibyte nil) "M")
-                               "U")
-                             (buffer-substring-no-properties
-                              (point-min) (point-max))))
-                (if (multibyte-string-p bos)
-                    (cons "M" (aes-toggle-representation bos))
-                  (cons "U" bos))))
-         (l (length (cdr ums)))
-         (res1 (concat (car ums) " "
-                       (number-to-string l) "\n"
-                       (cdr ums)))
-         (res2 (concat iv (aes-cbc-encrypt res1 iv keys Nb)))
-         (res3 (if non-b64 res2 (base64-encode-string res2)))
-         (res (concat (format "aes-encrypted V 1.1-%s-%d-%d\n"
-                              (if non-b64 "N" "B") Nb Nk) res3)))
-    (if bs (with-current-buffer bos
-             (erase-buffer)
-             (insert res)
-             t)
-      res)))
+  (if (and (equal type "OCB") (not (= Nb 4)))
+      (setq Nb 4)) ;; blocksize for OCB is 16 byte / 128 bit
+  (if (not (member type '("OCB" "CBC")))
+      (message "Wrong type.")
+    (let* ((Nr (+ (max Nb Nk) 6))
+           (bs (or (get-buffer bos) (bufferp bos))) ; t: buffer nil: string
+           (passtype (or (if bs (aes-exec-passws-hooks (buffer-file-name bs)))
+                         "encryption"))
+           (key (aes-key-from-passwd Nk passtype))
+           (keys (aes-KeyExpansion key Nb))
+           (iv (let ((x (make-string (lsh Nb 2) 0)))
+                 (dotimes (i (lsh Nb 2)) (aset x i (random 256)))
+                 x))
+           (ums (if bs (with-current-buffer bos
+                         (cons (if enable-multibyte-characters
+                                   (progn (set-buffer-multibyte nil) "M")
+                                 "U")
+                               (buffer-substring-no-properties
+                                (point-min) (point-max))))
+                  (if (multibyte-string-p bos)
+                      (cons "M" (aes-toggle-representation bos))
+                    (cons "U" bos))))
+           (header (format "aes-encrypted V 1.2-%s-%s-%d-%d-%s\n"
+                           type (if non-b64 "N" "B") Nb Nk (car ums)))
+           (l (length (cdr ums)))
+           (plain (cond ((equal type "OCB") (cdr ums))
+                        ((equal type "CBC")
+                         (concat (number-to-string l) "\n" (cdr ums)))))
+           (enc (cond ((equal type "OCB")
+                       (let ((res (aes-ocb-encrypt header plain iv keys Nb)))
+                         (concat iv (cdr res) (car res))))
+                      ((equal type "CBC")
+                       (concat iv (aes-cbc-encrypt plain iv keys Nb)))))
+           (res1 (if non-b64 enc (base64-encode-string enc)))
+           (res (concat header res1)))
+      (if bs (with-current-buffer bos
+               (erase-buffer)
+               (insert res)
+               (if aes-discard-undo-after-encryption
+                   (setq buffer-undo-list))
+               t)
+        res))))
 
 (defun aes-decrypt-buffer-or-string-1-0 (bos)
   "Old Version 1.0 of decrypt BOS.
@@ -581,8 +757,9 @@ BOS is a buffer, a buffer name or a string."
                          t)
                   (if um (aes-toggle-representation res) res))))))))))
 
-(defun aes-decrypt-buffer-or-string (bos)
-  "Decrypt BOS.
+(defun aes-decrypt-buffer-or-string-1-1 (bos)
+  "Old Version 1.1 of decrypt BOS.
+Kept for compatibility reasons.
 BOS is a buffer, a buffer name or a string.
 If BOS is a string matching the name of a buffer, then this buffer is used.
 Get the key for encryption by the function aes-key-from-passwd."
@@ -624,6 +801,63 @@ Get the key for encryption by the function aes-key-from-passwd."
                      t)
               (if um (aes-toggle-representation res) res))))))))
 
+(defun aes-decrypt-buffer-or-string (bos)
+  "Decrypt BOS V 1.2.
+BOS is a buffer, a buffer name or a string.
+If BOS is a string matching the name of a buffer, then this buffer is used.
+Get the key for encryption by the function aes-key-from-passwd."
+  (let* ((bs (or (bufferp bos) (get-buffer bos))) ; t: buffer nil: string
+         (sp (if bs (with-current-buffer bos
+                      (buffer-substring-no-properties (point-min) (point-max)))
+               bos)))
+    (if (not (string-match
+              (concat "aes-encrypted V 1.2-\\(CBC\\|OCB\\)-"
+                      "\\([BN]\\)-\\([0-9]+\\)-\\([0-9]+\\)-\\([MU]\\)\n") sp))
+        (aes-decrypt-buffer-or-string-1-1 bos)
+      (let* ((type (match-string 1 sp))
+             (b64 (equal "B" (match-string 2 sp)))
+             (Nb (string-to-number (match-string 3 sp)))
+             (blocksize (lsh Nb 2))
+             (Nk (string-to-number (match-string 4 sp)))
+             (Nr (+ (max Nk Nb) 6))
+             (um (match-string 5 sp))
+             (header (match-string 0 sp))
+             (res1 (substring sp (match-end 0)))
+             (res2 (if b64 (base64-decode-string res1) res1))
+             (iv (substring res2 0 blocksize))
+             (enc-offset (cond ((equal type "CBC") blocksize)
+                               ((equal type "OCB") (lsh blocksize 1))))
+             (tag (substring res2 blocksize enc-offset))
+             (enc (substring res2 enc-offset))
+             (passtype (or (if bs
+                               (aes-exec-passws-hooks (buffer-file-name bos)))
+                           "decryption"))
+             (key (aes-key-from-passwd Nk passtype))
+             (keys (aes-KeyExpansion key Nb))
+             (res1 (cond ((equal type "CBC") (aes-cbc-decrypt enc iv keys Nb))
+                         ((equal type "OCB")
+                          (aes-ocb-decrypt header enc tag iv keys Nb)))))
+        (if (or (and (equal type "CBC")
+                     (not (string-match "\\`\\([0-9]+\\)\n" res1)))
+                (and (equal type "OCB") (not (car res1))))
+            (message (concat "buffer or string '"
+                             (if (bufferp bos) (buffer-name bos) bos)
+                             "' could not be decrypted."))
+          (let* ((len (and (equal type "CBC")
+                         (string-to-number (match-string 1 res1))))
+                 (res (cond ((equal type "CBC")
+                             (substring res1 (match-end 0)
+                                        (+ (match-end 0) len)))
+                            ((equal type "OCB") (cdr res1)))))
+            (if bs (with-current-buffer bos
+                     (erase-buffer) (set-buffer-multibyte nil)
+                     (insert res) (set-buffer-multibyte um)
+                     (setq buffer-file-coding-system
+                           (car (find-coding-systems-region
+                                 (point-min) (point-max))))
+                     t)
+              (if um (aes-toggle-representation res) res))))))))
+
 (defun aes-encrypt-and-dont-save ()
   "Encrypt and dont save current buffer.
 Return NIL."
@@ -653,9 +887,9 @@ Preserve modification status of buffer during decryption."
       (let ((mod-flag (buffer-modified-p)))
         (aes-decrypt-buffer-or-string (current-buffer))
         (set-buffer-modified-p mod-flag)
-        (add-hook (if (equal (substring emacs-version 0 2) "21")
+        (add-hook (if (<= emacs-major-version 21)
                       'local-write-file-hooks
-                    'write-contents-functions)
+                    'write-file-functions)
                   'aes-encrypt-and-dont-save nil t))
     (aes-encrypt-buffer-or-string (current-buffer)))
   (goto-char (point-min)))
@@ -664,20 +898,36 @@ Preserve modification status of buffer during decryption."
   "Remove saving-hook from current buffer.
 This allows saving a previously encrypted buffer in plaintext."
   (interactive)
-  (remove-hook (if (equal (substring emacs-version 0 2) "21")
+  (remove-hook (if (<= emacs-major-version 21)
                    'local-write-file-hooks
-                 'write-contents-functions)
+                 'write-file-functions)
                'aes-encrypt-and-dont-save t)
   (message "Encryption Hook removed."))
 
-;; (setq format-alist
-;;       (cons (list 'aes
-;;                   "AES-Format"
-;;                   "aes-encrypted V [0-9]+.[0-9]+-.+\n"
-;;                   'aes-from-fn
-;;                   'aes-to-fn
-;;                   t
-;;                   nil)
-;;             format-alist))
+(defun aes-auto-decrypt (&rest x)
+  "Function for auto decryption used in format-alist.
+WARNING: not compliant to format-alist in the sense that the function
+decrypts the whole file and not just the indicated region."
+  (goto-char (point-min))
+  (if (looking-at "aes-encrypted V [0-9]+.[0-9]+-.+\n")
+      (let ((mod-flag (buffer-modified-p)))
+        (aes-decrypt-buffer-or-string (current-buffer))
+        (set-buffer-modified-p mod-flag)
+        (if (<= emacs-major-version 21)
+            (add-hook 'local-write-file-hooks 'aes-encrypt-and-dont-save nil t)
+          (add-hook 'write-file-functions 'aes-encrypt-and-dont-save nil t))
+        ))
+  (goto-char (point-min)))
+
+(setq format-alist
+      (cons (list 'aes
+                  "AES-encrypted format"
+                  "aes-encrypted V [0-9]+.[0-9]+-.+\n"
+                  'aes-auto-decrypt
+                  nil
+                  t
+                  nil)
+            format-alist))
+;; (setq format-alist (cdr format-alist))
 
 (provide 'aes)
