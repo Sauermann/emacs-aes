@@ -1,10 +1,10 @@
-;;; aes.el --- Implementation of AES in emacs lisp
+;;; aes.el --- Implementation of AES
 
 ;; Copyright (C) 2008 Markus Sauermann
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
-;; published by the Free Software Foundation; either version 2 of
+;; published by the Free Software Foundation; either version 3 of
 ;; the License, or (at your option) any later version.
 
 ;; This program is distributed in the hope that it will be
@@ -21,7 +21,7 @@
 ;; Maintainer: Markus Sauermann <mhoram@glory.to>
 ;; Created: 15 Feb 2008
 ;; Version: 0.2
-;; Revision: $Id: aes.el 30 2008-09-27 23:14:29Z mhoram $
+;; Revision: $Id: aes.el 31 2008-09-28 00:02:18Z mhoram $
 ;; Keywords: data tools
 
 ;;; Change Log:
@@ -43,19 +43,19 @@
 ;; Whenever possible, this library should be used byte-compiled, as this
 ;; provides a great performance boost!
 
-;; Main entry functions:
+;; Main entry points:
 ;; `aes-encrypt-current-buffer' Ask for password and encrypt current buffer.
 ;; `aes-decrypt-current-buffer' Ask for password and decrypt current buffer.
 ;; `aes-insert-password' Generate a random password from user input.
 ;; For customizing this library, there is the customization group aes in the
 ;; applications group.
 
-;; Emacs version 22 is recommended. It should work with version 21, but I did
-;; not test it recently. Version 23 is not yet tested.
+;; Emacs version 22 is recommended. It should work with version 21, but there
+;; were no tests recently. Version 23 is not yet tested.
 
 ;; This library implements the Rijndael algorithm [1] natively in emacs and
 ;; allows to encrypt and decrypt buffers or strings.
-;; This is a superset of the AES algorithm [2].
+;; Rijndael is a superset of the AES algorithm [2].
 ;; Further this library contains implementations of Cipher-block chaining [4]
 ;; and Offset Codebook Mode [5].
 ;; For patent issues about OCB see [6], which allows this distribution.
@@ -79,9 +79,9 @@
 ;;   with entries '((A . B) . (C . D)), where A, B, C and D are bytes. It is
 ;;   precalculated before the en-/decryption algorithms.
 ;; - The S-boxes are implemented by lookup tables.
-;; - The three operations ByteSub, ShiftRow and MixColumn together with Round
-;;   key-addition are implemented in the functions `aes-SubShiftMixKeys' and
-;;   `aes-InvSubShiftMixKeys' for encryption and decryption respectively.
+;; - The three operations ByteSub, ShiftRow and MixColumn together with
+;;   round-key-addition are implemented in the functions `aes-SubShiftMixKeys'
+;;   and `aes-InvSubShiftMixKeys' for encryption and decryption respectively.
 ;; - CBC mode is implemented straightforward, using a 0-padding to the full
 ;;   blocklength. The IV is appended to and saved with the ciphertext.
 ;; - OCB mode made the implementation of a pmac, based on AES, necessary, but
@@ -97,11 +97,7 @@
 ;; - Encrypted buffers are Auto-Saved unencrypted.
 ;; - Exiting emacs via C-x-c saves buffers unencrypted.
 ;; - This implementation is not resistant against DPA attacks.
-;; - Changing the window-size during entropy harvesting causes problems.
-;; - aes-auto-decrypt has to be reworked, since it is not completely compliant
-;;   to emacs standards.
-;; - Is it appropriate for `aes-decrypt-buffer-or-string' to adjust the
-;;   coding system?
+;; - aes-auto-decrypt is not completely compliant to emacs standards.
 
 ;; [1] http://csrc.nist.gov/archive/aes/rijndael/Rijndael-ammended.pdf
 ;; [2] http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf
@@ -138,13 +134,13 @@ The returnvalue is X."
       (setq i (1+ i))))
   x)
 
-(defmacro aes-xor-4 (x y)
+(defun aes-xor-4 (x y)
   "Return the 4 byte objects X and Y bytewise xored as new cons cell.
 X and Y are objects of the form '((A . B) . (C . D))"
-  `(cons (cons (logxor (car (car ,x)) (car (car ,y)))
-               (logxor (cdr (car ,x)) (cdr (car ,y))))
-         (cons (logxor (car (cdr ,x)) (car (cdr ,y)))
-               (logxor (cdr (cdr ,x)) (cdr (cdr ,y))))))
+  (cons (cons (logxor (car (car x)) (car (car y)))
+              (logxor (cdr (car x)) (cdr (car y))))
+        (cons (logxor (car (cdr x)) (car (cdr y)))
+              (logxor (cdr (cdr x)) (cdr (cdr y))))))
 
 (defun aes-xor-4-de (x y)
   "X and Y are bytewise xored destructively in X.
@@ -236,14 +232,6 @@ position K of the result as ((A . B) C . D)."
 (defconst aes-lb (aref aes-mul-table #x0b))
 (defconst aes-ld (aref aes-mul-table #x0d))
 
-(defmacro aes-inv (x)
-  "Calculate the inverse of X in GF(2^8) by a table lookup in `aes-inv-table'."
-  `(aref aes-inv-table ,x))
-
-(defmacro aes-mul (x y)
-  "Multiply x and y in GF(2^8) by using the table lookup `aes-mul-table'."
-  `(aref (aref aes-mul-table ,x) ,y))
-
 ;;;; SubBytes Transformation
 
 (defconst aes-s-boxes-pre
@@ -252,7 +240,7 @@ position K of the result as ((A . B) C . D)."
         (l2 (make-string 256 0))
         (x 0))
     (while (< x 256)
-      (let ((b (aes-inv x))
+      (let ((b (aref aes-inv-table x))
             (g 0)
             (c #x63)
             (i 0))
@@ -493,7 +481,8 @@ entries of the same form as KEY."
           (progn (aes-RotWord temp)
                  (aes-SubWord temp)
                  (aes-xor-4-de temp rcon)
-                 (setcar (car rcon) (aes-mul (car (car rcon)) 2)))
+                 (setcar (car rcon)
+                         (aref (aref aes-mul-table (car (car rcon))) 2)))
         (if (and (< 6 Nk) (= (% i Nk) 4))
             (aes-SubWord temp)))
       (setq w (cons (aes-xor-4 (nth 3 w) temp) w))
@@ -549,15 +538,14 @@ KEYS is a part of the key expansion as defined in `aes-InvSubShiftMixKeys'."
 
 ;;;; AES Cipher
 
-(defun aes-Cipher (plain keys Nb &optional Nr)
+(defsubst aes-Cipher (plain keys Nb &optional Nr)
   "Perform a complete aes encryption of the unibyte string PLAIN.
 Return a new string containing the encrypted string PLAIN.
 Use KEYS as the expanded key as defined in `aes-SubShiftMixKeys'.
 NB is the number of 32-bit words in PLAIN. NR is the number of rounds.
 The length of KEYS is (1 + NR) * NB."
   ;; For a description of the AES cipher see [1, Ch 4.4] or [2, Ch 5.1]
-  (let* (;(Nk (- (/ (length keys) Nb) 7))
-         (state (make-string (lsh Nb 2) 0))
+  (let* ((state (make-string (lsh Nb 2) 0))
          (r 1))
     (unless Nr (setq Nr (+ (max Nb (- (/ (length keys) Nb) 7)) 6)))
     (store-substring state 0 plain)
@@ -585,15 +573,14 @@ The length of KEYS is (1 + NR) * NB."
 ;   'insert)
 ;  )
 
-(defun aes-InvCipher (cipher keys Nb &optional Nr)
+(defsubst aes-InvCipher (cipher keys Nb &optional Nr)
   "Perform a complete aes decryption of the unibyte string CIPHER.
 Return a new string containing the decrypted string CIPHER.
 Use KEYS as the expanded key as defined in `aes-InvSubShiftMixKeys'.
 NB is the number of 32-bit words in CIPHER. NR is the number of rounds.
 The length of KEYS is (1 + NR) * NB."
   ;; For a description of the inverted AES cipher see [1, Ch 5.3] or [2, Ch 5.3]
-  (let* (;(Nk (- (/ (length keys) Nb) 7))
-         (state (make-string (lsh Nb 2) 0))
+  (let* ((state (make-string (lsh Nb 2) 0))
          (r (or Nr (+ (max Nb (- (/ (length keys) Nb) 7)) 6))))
     (store-substring state 0 cipher)
     (aes-InvAddRoundKey state keys)
@@ -621,7 +608,7 @@ The length of KEYS is (1 + NR) * NB."
 ;      ) 'insert)
 ;  )
 
-;;;; CBC implementation
+;;;; Cipher-Block Chaining
 
 (defun aes-cbc-encrypt (plain iv keys Nb)
   "Encrypt the string PLAIN by the cbc method using aes for encryption.
@@ -664,7 +651,7 @@ multiple of the blocksize."
                                   keys Nb))))
     res))
 
-;;;; OCB 2.0
+;;;; Offset Codebook Mode 2.0
 
 (defun aes-128-double-de (x)
   "Calculate X multiplicated by 2 in a 128 bit field.
@@ -908,6 +895,8 @@ Return nil, if every function in the hook returns nil."
 
 (defun aes-key-from-passwd (Nk usage type-or-file)
   "Return a key, generated from a password.
+This is done by encrypting the password by a key generated from the password
+using a constant initialization vector.
 USAGE must be a string either \"encryption\" or \"decryption\" denoting the
 usage of the password.
 TYPE-OR-FILE is a string describing what the password is used for. If the key is
@@ -1215,53 +1204,53 @@ Get the key for encryption from the function `aes-key-from-passwd'."
   (unless Nk (setq Nk aes-Nk))
   (let* ((buffer (or (get-buffer bos) (and (bufferp bos) bos)))
          (length (if buffer (with-current-buffer buffer (point-max))
-                   (length bos)))
-         (type (or (and type
-                        (or (member type '("OCB" "CBC"))
-                            (error "Wrong type."))
-                        type)
-                   (if (< length aes-ocb-max-default-length) "OCB" "CBC")))
-         (group (or (and buffer
-                         (or (aes-exec-passws-hooks (buffer-file-name buffer))
-                             (buffer-name buffer)))
-                    "string"))
-         (key (aes-str-to-b (aes-key-from-passwd Nk "encryption" group)))
-         (keys (aes-KeyExpansion key Nb))
-         (iv (let* ((x (make-string (lsh Nb 2) 0))
-                    (aes-user-interaction-entropy nil)
-                    (y (aes-user-entropy (lsh Nb 2) 256)))
-               (dotimes (i (lsh Nb 2)) (aset x i (car y)) (setq y (cdr y)))
-               x))
-         (multibyte
-          (if buffer (if (with-current-buffer buffer
-                           enable-multibyte-characters)
-                         "M" "U")
-            (if (multibyte-string-p bos) "M" "U")))
-         (unibyte-string
-          (if buffer
-              (with-current-buffer buffer
-                (if (equal multibyte "M") (set-buffer-multibyte nil))
-                (buffer-substring-no-properties (point-min) (point-max)))
-            (if (equal multibyte "M") (aes-toggle-representation bos) bos)))
-         (header (format "aes-encrypted V 1.2-%s-%s-%d-%d-%s\n"
-                         type (if nonb64 "N" "B") Nb Nk multibyte))
-         (plain (if (equal type "OCB") unibyte-string
-                  (concat (number-to-string (length unibyte-string))
-                          "\n" unibyte-string)))
-         (enc (if (equal type "OCB")
-                  (let* ((res (aes-ocb-encrypt header plain iv keys Nb)))
-                    (concat iv (cdr res) (car res)))
-                (concat iv (aes-cbc-encrypt plain iv keys Nb)))))
-    (if nonb64 nil
-      (setq enc (base64-encode-string enc)))
-    (setq enc (concat header enc))
-    (if buffer (with-current-buffer buffer
-                 (erase-buffer)
-                 (insert enc)
-                 (if aes-discard-undo-after-encryption
-                     (setq buffer-undo-list))
-                 t)
-      enc)))
+                   (length bos))))
+    (if (not (or (and (not type)
+                      (setq type (if (< length aes-ocb-max-default-length)
+                                     "OCB" "CBC")))
+                 (member type '("OCB" "CBC"))))
+        (message "Wrong type.")
+      (let* ((group (or (and buffer (or (aes-exec-passws-hooks
+                                         (buffer-file-name buffer))
+                                        (buffer-name buffer)))
+                        "string"))
+             (key (aes-str-to-b (aes-key-from-passwd Nk "encryption" group)))
+             (keys (aes-KeyExpansion key Nb))
+             (iv (let* ((x (make-string (lsh Nb 2) 0))
+                        (aes-user-interaction-entropy nil)
+                        (y (aes-user-entropy (lsh Nb 2) 256)))
+                   (dotimes (i (lsh Nb 2)) (aset x i (car y)) (setq y (cdr y)))
+                   x))
+             (multibyte
+              (if buffer (if (with-current-buffer buffer
+                               enable-multibyte-characters)
+                             "M" "U")
+                (if (multibyte-string-p bos) "M" "U")))
+             (unibyte-string
+              (if buffer
+                  (with-current-buffer buffer
+                    (if (equal multibyte "M") (set-buffer-multibyte nil))
+                    (buffer-substring-no-properties (point-min) (point-max)))
+                (if (equal multibyte "M") (aes-toggle-representation bos) bos)))
+             (header (format "aes-encrypted V 1.2-%s-%s-%d-%d-%s\n"
+                             type (if nonb64 "N" "B") Nb Nk multibyte))
+             (plain (if (equal type "OCB") unibyte-string
+                      (concat (number-to-string (length unibyte-string))
+                              "\n" unibyte-string)))
+             (enc (if (equal type "OCB")
+                      (let* ((res (aes-ocb-encrypt header plain iv keys Nb)))
+                        (concat iv (cdr res) (car res)))
+                    (concat iv (aes-cbc-encrypt plain iv keys Nb)))))
+        (if nonb64 nil
+          (setq enc (base64-encode-string enc)))
+        (setq enc (concat header enc))
+        (if buffer (with-current-buffer buffer
+                     (erase-buffer)
+                     (insert enc)
+                     (if aes-discard-undo-after-encryption
+                         (setq buffer-undo-list))
+                     t)
+          enc)))))
 
 ;; (aes-encrypt-buffer-or-string "address.xml" "CBC")
 
@@ -1305,8 +1294,8 @@ Get the key for encryption by the function `aes-key-from-passwd'."
             (key (aes-str-to-b (aes-key-from-passwd Nk "decryption" group)))
             (keys (aes-KeyExpansion key Nb))
             (res (if (equal type "CBC")
-                      (aes-cbc-decrypt enc iv (nreverse keys) Nb)
-                    (aes-ocb-decrypt header enc tag iv keys Nb)))
+                     (aes-cbc-decrypt enc iv (nreverse keys) Nb)
+                   (aes-ocb-decrypt header enc tag iv keys Nb)))
             len)
        (if (or (and (equal type "CBC")
                     (not (string-match "\\`\\([0-9]+\\)\n" res)))
@@ -1317,7 +1306,7 @@ Get the key for encryption by the function `aes-key-from-passwd'."
          (setq len (and (equal type "CBC")
                         (string-to-number (match-string 1 res))))
          (setq res (if (equal type "OCB") res
-                      (substring res (match-end 0) (+ (match-end 0) len))))
+                     (substring res (match-end 0) (+ (match-end 0) len))))
          (if buffer (with-current-buffer bos
                       (erase-buffer) (set-buffer-multibyte nil)
                       (insert res)
