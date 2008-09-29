@@ -20,8 +20,8 @@
 ;; Author: Markus Sauermann <mhoram@gmx.de>
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.3
-;; Revision: $Id: aes.el 34 2008-09-28 21:00:33Z mhoram $
+;; Version: 0.4
+;; Revision: $Id: aes.el 38 2008-09-29 17:59:29Z mhoram $
 ;; Keywords: data tools
 
 ;;; Change Log:
@@ -34,6 +34,7 @@
 ;;     code cleanup
 ;; 0.3 Bugfix in password generation
 ;;     documentation cleanup
+;; 0.4 ocb usage adjusted
 
 ;;; Commentary:
 
@@ -69,6 +70,7 @@
 ;; Nk denotes the number of 32-bit words comprising the cipher key.
 ;; Nr denotes the number of rounds.
 ;; We allow Nb and Nk to be 4, 6, or 8. and Nr = max(Nb, Nk) + 6
+;; For OCB we restrict Nb to 4.
 
 ;; Since emacs implements integers as 29 bit numbers, it is not possible to
 ;; use the optimization, which requires 32 bit numbers. For details see [3].
@@ -523,7 +525,7 @@ KEYS is a part of the key expansion as defined in `aes-InvSubShiftMixKeys'."
 
 ;;;; AES Cipher
 
-(defsubst aes-Cipher (plain keys Nb &optional Nr)
+(defun aes-Cipher (plain keys Nb &optional Nr)
   "Perform a complete aes encryption of the unibyte string PLAIN.
 Return a new string containing the encrypted string PLAIN.
 Use KEYS as the expanded key as defined in `aes-SubShiftMixKeys'.
@@ -543,7 +545,7 @@ The length of KEYS is (1 + NR) * NB."
     (aes-AddRoundKey state (nthcdr Nb keys))
     state))
 
-(defsubst aes-InvCipher (cipher keys Nb &optional Nr)
+(defun aes-InvCipher (cipher keys Nb &optional Nr)
   "Perform a complete aes decryption of the unibyte string CIPHER.
 Return a new string containing the decrypted string CIPHER.
 Use KEYS as the expanded key as defined in `aes-InvSubShiftMixKeys'.
@@ -618,6 +620,7 @@ The returnvalue is the result."
       (aset x i (logand #xff (logxor (lsh (aref x i) 1)
                                      (lsh (aref x (+ i 1)) -7))))
       (setq i (1+ i)))
+    ;; the #x87 is the reason why OCB is restricted to Nb=4
     (aset x 15 (logand #xff (logxor (lsh (aref x 15) 1) (* c #x87)))))
   x)
 
@@ -991,14 +994,12 @@ Changing the window-size during the process will cause problems."
            (current-entropy-bits 0)
            (percentage-ready 0)
            keys)
-      ;; generate a random iv from previous input
-      (dotimes (i 16)
-        (aset iv i (string-to-number
-                    (format "%s" (substring chmd5 (* 2 i) (+ 2 (* 2 i)))) 16)))
-      ;; generate aes key with Nk = 4
+      ;; generate aes key and a random iv from previous input
       (dotimes (i 16)
         (aset key i (string-to-number
-                     (format "%s" (substring chmd5b (* 2 i) (+ 2 (* 2 i)))) 16)))
+                     (format "%s" (substring chmd5b (* 2 i) (+ 2 (* 2 i)))) 16))
+        (aset iv i (string-to-number
+                    (format "%s" (substring chmd5 (* 2 i) (+ 2 (* 2 i)))) 16)))
       (setq key (aes-str-to-b key))
       (setq keys (aes-KeyExpansion key 4))
       ;; start the user input
@@ -1163,6 +1164,8 @@ Get the key for encryption from the function `aes-key-from-passwd'."
                                      "OCB" "CBC")))
                  (member type '("OCB" "CBC"))))
         (message "Wrong type.")
+      (if (and (equal type "OCB") (not (= Nb 4)))
+          (setq Nb 4)) ;; other values are not implemented.
       (let* ((group (or (and buffer (or (aes-exec-passws-hooks
                                          (buffer-file-name buffer))
                                         (buffer-name buffer)))
