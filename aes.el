@@ -20,13 +20,19 @@
 ;; Author: Markus Sauermann <mhoram@glory.to>
 ;; Maintainer: Markus Sauermann <mhoram@glory.to>
 ;; Created: 15 Feb 2008
-;; Version: 0.1
-;; Revision: $Id: aes.el 26 2008-09-24 22:53:47Z mhoram $
+;; Version: 0.2
+;; Revision: $Id: aes.el 27 2008-09-26 01:25:01Z mhoram $
 ;; Keywords: data tools
+
+;;; Change Log:
+
+;; 0.1 initial working unpublished version
+;; 0.2 performance enhancements
+;;     documentation included
 
 ;;; Commentary:
 
-;; Configfile:
+;; Configfile
 ;; Insert "(require 'aes)" into your local .emacs file to load this library.
 ;; Insert "(aes-enable-auto-decryption)" into yout local .emacs file for
 ;; convenient automatic recoginzation of encrypted files during loading.
@@ -41,8 +47,8 @@
 ;; For customizing this library, there is the customization group aes in the
 ;; applications group.
 
-;; Emacs version 22 is required. I did not test it with version 21, but there
-;; are probably some incompatible hooks used.
+;; Emacs version 22 is recommended. It should work with version 21, but there
+;; mightbe some incompatible hooks used for automatic decryption.
 
 ;; This library implements the Rijndael algorithm [1] natively! in emacs.
 ;; This is a superset of the AES algorithm [2].
@@ -53,6 +59,11 @@
 
 ;; This implementation allows additionally to the AES specification blocklengths
 ;; of 24 and 32 bytes.
+
+;; Nb denotes the number of 32-bit words in the state.
+;; Nk denotes the number of 32-bit words comprising the cipher key.
+;; Nr denotes the number of rounds.
+;; We allow Nb and Nk to be 4, 6, or 8. and Nr = max(Nb, Nk) + 6
 
 ;; Since emacs implements integers as 29 bit numbers, it is not possible to
 ;; use the best possible optimization, which requires 32 bit numbers. For
@@ -69,11 +80,10 @@
 ;;   of the expanded key, since the application of the keys is against the
 ;;   internal stored order and emacs makes travelling a list in the opposite
 ;;   direction not easy.
-;; - The S-boxes are implemented by lookup tables and only used during
-;;   key expansion and only one round of an en-/decryption.
+;; - The S-boxes are implemented by lookup tables.
 ;; - The three operations ByteSub, ShiftRow and MixColumn together with Round
 ;;   key-addition are implemented in the single function `aes-SubShiftMixKeys'
-;;   and `aes-InvSubShiftMixKeys' respectively for encryption and decryption.
+;;   and `aes-InvSubShiftMixKeys' for encryption and decryption respectively.
 ;; - CBC mode is implemented straightforward, using a 0-padding to the full
 ;;   blocklength. The IV is appended to the ciphertext.
 ;; - OCB mode made the implementation of a pmac, based on AES, necessary, but
@@ -103,7 +113,9 @@
 ;# xor
 
 (defun aes-xor (x y)
-  "Return X and Y bytewise xored as string."
+  "Return X and Y bytewise xored.
+X and Y and the return values are strings.
+Y must not be shorter than X."
   (let* ((l (length x))
          (res (make-string l 0))
          (i 0))
@@ -112,6 +124,7 @@
       (setq i (1+ i)))
     res))
 
+(eval-when-compile
 (defsubst aes-xor-4 (x y)
   "Return the 4 bytes long X and Y bytewise xored as string."
   (string (logxor (aref x 0) (aref y 0))
@@ -120,18 +133,21 @@
           (logxor (aref x 3) (aref y 3))))
 
 (defmacro aes-xor-4-b (x y)
-  "Return the 4 byte objects X and Y bytewise xored as new cons cell."
+  "Return the 4 byte objects X and Y bytewise xored as new cons cell.
+X and Y are objects of the form '((A . B) . (C . D))"
   `(cons (cons (logxor (car (car ,x)) (car (car ,y)))
                (logxor (cdr (car ,x)) (cdr (car ,y))))
          (cons (logxor (car (cdr ,x)) (car (cdr ,y)))
                (logxor (cdr (cdr ,x)) (cdr (cdr ,y))))))
 
 (defsubst aes-xor-4-des-b (x y)
-  "xor X and Y bytewise destructively in X."
+  "X and Y are bytewise xored destructively in X.
+X and Y are objects of the form '((A . B) . (C . D))"
   (setcar (car x) (logxor (car (car x)) (car (car y))))
   (setcdr (car x) (logxor (cdr (car x)) (cdr (car y))))
   (setcar (cdr x) (logxor (car (cdr x)) (car (cdr y))))
   (setcdr (cdr x) (logxor (cdr (cdr x)) (cdr (cdr y)))))
+)
 
 ;# Helpers
 
@@ -140,6 +156,11 @@
   (concat v (make-string (mod (- (string-bytes v)) bs) 0)))
 
 (defun aes-str-to-b (str)
+  "Convert string STR to a list-representation.
+The length of STR must be a multiple of 4.
+The length of the resulting list has a quarter of the length of STR.
+Elements 4*K to 4*K+3 of STR (named A, B, C and D in this order) are stored in
+position K of the result as ((A . B) C . D)."
   (let (res
         (l (length str))
         (i 0))
@@ -152,233 +173,290 @@
     (nreverse res)))
 ; (aes-str-to-b "0123456789abcdef")
 
-(defun aes-list-expander (l &optional len)
+(defun aes-list-expander (l &optional step len)
   "Create an expanded list of L.
-The created list has as K-th element the list L, starting at position K.
-The created list has length LEN, if non-nil, or the same length as L."
-  (let* ((res (make-list (or len (length l)) nil))
-         (rp res))
-    (while (and (setcar rp l)
-                (setq rp (cdr rp))
-                (setq l (cdr l))))
-    res))
-; (aes-list-expander '(1 2))
+The created list has as K-th element a sublist of L starting at
+position K*STEP of L.
+If LEN is non-nil, then the created list has length LEN. Otherwise it has a
+length of L divided by STEP, rounded up to the next integer."
+  (unless step (setq step 1))
+  (if (consp l)
+    (let* ((res (make-list (or len (ceiling (/ (length l) (+ 0.0 step)))) nil))
+           (rp res))
+      (while (and (setcar rp l)
+                  (setq rp (cdr rp))
+                  (setq l (nthcdr step l))))
+      res)
+    (error "Argument to `aes-list-expander' is not a cons: %s" l)))
+; (aes-list-expander '() 23)
 
 ;# Multiplication
 
-(defun aes-mul-pre (a b)
-  "Multiplication for bytes in GF2."
-  (let ((p 0))
-    (dotimes (c 8)
-      (if (= 1 (logand b 1)) (setq p (logxor a p)))
-      (if (prog1 (= #x80 (logand a #x80)) (setq a (logand #xff (lsh a 1))))
+(eval-when-compile
+(defsubst aes-mul-pre (a b)
+  "Multiply the bytes A and B in GF2 and return their product."
+  ;; For a description, see [1, Ch 2.1.2] or [2. Ch 4.2.1]
+  (let ((p 0)
+        (c 0))
+    (while (< c 8)
+      (if (= 1 (logand b 1))
+          (setq p (logxor a p)))
+      (if (prog1 (= #x80 (logand a #x80))
+            (setq a (logand #xff (lsh a 1))))
           (setq a (logxor a #x1b)))
-      (setq b (lsh b -1)))
-    p))
+      (setq b (lsh b -1))
+      (setq c (1+ c)))
+    p)))
 
-(defconst aes-Mul-Table-pre
-  (let ((l (make-string 256 0))
-        (mt (make-vector 256 0)))
-    (dotimes (i 256) (aset mt i (make-string 256 0)))
-    (dotimes (x 256)
-      (if (< 0 x)
-          (let ((i x))
-            (while (< i 256)
-              (let ((res (aes-mul-pre i x)))
-                (if (= #x01 res) (progn (aset l x i) (aset l i x)))
-                (aset (aref mt x) i res)
-                (aset (aref mt i) x res))
-              (setq i (1+ i))))))
-    (cons l mt))
-  "Inverse and multiplication table.")
+(let ((l (make-string 256 0))
+      (mt (make-vector 256 0))
+      (x 0)
+      i res)
+  (while (< x 256)
+    (aset mt x (make-string 256 0))
+    (setq x (1+ x)))
+  (setq x 1)
+  (while (< x 256)
+    (setq i x)
+    (while (< i 256)
+      (setq res (aes-mul-pre i x))
+      (if (= #x01 res) (progn (aset l x i) (aset l i x)))
+      (aset (aref mt x) i res)
+      (aset (aref mt i) x res)
+      (setq i (1+ i)))
+    (setq x (1+ x)))
+  (defconst aes-mul-table mt
+    "This variable contains the GF2 multiplication lookup table.")
+  (defconst aes-inv-table l
+    "This variable contains the GF2 inverting lookup table."))
 
-(defconst aes-Mul-Table
-  (cdr aes-Mul-Table-pre)
-  "Multiplication table.")
+;; The following 6 shortcuts are used during the time critical
+;; functions `aes-SubShiftMixKeys' and `aes-InvSubShiftMixKeys'
+(defconst aes-l2 (aref aes-mul-table #x02))
+(defconst aes-l3 (aref aes-mul-table #x03))
+(defconst aes-l9 (aref aes-mul-table #x09))
+(defconst aes-le (aref aes-mul-table #x0e))
+(defconst aes-lb (aref aes-mul-table #x0b))
+(defconst aes-ld (aref aes-mul-table #x0d))
 
-(defconst aes-Inv-Table
-  (car aes-Mul-Table-pre)
-  "Inverse Table")
+(defmacro aes-inv (x)
+  "Calculate the inverse of X in GF2 by a table lookup in `aes-inv-table'."
+  `(aref aes-inv-table ,x))
 
-(defconst aes-l2 (aref aes-Mul-Table #x02))
-(defconst aes-l3 (aref aes-Mul-Table #x03))
-(defconst aes-l9 (aref aes-Mul-Table #x09))
-(defconst aes-le (aref aes-Mul-Table #x0e))
-(defconst aes-lb (aref aes-Mul-Table #x0b))
-(defconst aes-ld (aref aes-Mul-Table #x0d))
+(defmacro aes-mul (x y)
+  "Multiply x and y in GF2 by using the table lookup `aes-mul-table'."
+  `(aref (aref aes-mul-table ,x) ,y))
 
-(defmacro aes-Mul-Inv (x)
-  "Calculate inverse element of aes-multiplication."
-  `(aref aes-Inv-Table ,x))
+;# SubBytes Transformation
 
-(defmacro aes-Mul (x y)
-  "Multiply x and y in GF2."
-  `(aref (aref aes-Mul-Table ,x) ,y))
-
-;# S-Boxes
-
-(defconst aes-S-boxes-pre
+(defconst aes-s-boxes-pre
+  ;; For a description see [1, Ch 4.2.1] or [2, Ch 5.1.1]
   (let ((l1 (make-string 256 0))
-        (l2 (make-string 256 0)))
-    (dotimes (x 256)
-      (let ((b (aes-Mul-Inv x))
+        (l2 (make-string 256 0))
+        (x 0))
+    (while (< x 256)
+      (let ((b (aes-inv x))
             (g 0)
-            (c #x63))
-        (dotimes (i 8) (setq g (logxor (lsh (logand (logxor
-                                                     (lsh (logxor b c) (- i))
-                                                     (lsh b (- (% (+ i 4) 8)))
-                                                     (lsh b (- (% (+ i 5) 8)))
-                                                     (lsh b (- (% (+ i 6) 8)))
-                                                     (lsh b (- (% (+ i 7) 8))))
-                                                    1)
-                                            i)
-                                       g)))
+            (c #x63)
+            (i 0))
+        (while (< i 8)
+          (setq g (logxor (lsh (logand
+                                (logxor
+                                 (lsh (logxor b c) (- i))
+                                 (lsh b (- (% (+ i 4) 8)))
+                                 (lsh b (- (% (+ i 5) 8)))
+                                 (lsh b (- (% (+ i 6) 8)))
+                                 (lsh b (- (% (+ i 7) 8))))
+                                1)
+                               i)
+                          g))
+          (setq i (1+ i)))
         (aset l1 x g)
-        (aset l2 g x)))
+        (aset l2 g x))
+      (setq x (1+ x)))
     (cons l1 l2))
-  "Contains lookup tables S-boxes.
-It is a pair where the car-value contains the S-box used for encryption and
-the cdr-value contains the S-box used for decryption.
+  "This constant contains the lookup tables for S-boxes.
+It is a pair where the car-value contains the S-box values used for encryption
+and the cdr-value contains the S-box values used for decryption.
 The S-boxes are stored as strings of length 256.")
 
-(defconst aes-S-boxes-enc
-  (car aes-S-boxes-pre)
+(defconst aes-s-boxes-enc
+  (car aes-s-boxes-pre)
   "Encryption S-Boxes")
 
-(defconst aes-S-boxes-dec
-  (cdr aes-S-boxes-pre)
+(defconst aes-s-boxes-dec
+  (cdr aes-s-boxes-pre)
   "Decryption S-Boxes")
 
-(defsubst aes-SubBytes (x)
-  "Apply the encryption S-box to each byte of the string X."
-  (let ((l (length x))
+(defsubst aes-SubBytes (state)
+  "Apply the SubBytes transformation to each byte of the string STATE.
+STATE may be of arbitrary length."
+  ;; For a description of SubBytes see [1, Ch 4.2.1] or [2, Ch 5.1.1]
+  (let ((l (length state))
         (i 0))
     (while (< i l)
-      (aset x i (aref aes-S-boxes-enc (aref x i)))
+      (aset state i (aref aes-s-boxes-enc (aref state i)))
       (setq i (1+ i)))))
 
-(defun aes-InvSubBytes (x)
-  "Apply the decryption S-box to each byte of the string X."
-  (let ((l (length x))
+(defun aes-InvSubBytes (state)
+  "Apply the InvSubBytes transformation to each byte of the string STATE.
+STATE may be of arbitrary length."
+  ;; For a description of InvSubBytes see [1, Ch 4.2.1] or [2, Ch 5.3.2]
+  (let ((l (length state))
         (i 0))
     (while (< i l)
-      (aset x i (aref aes-S-boxes-dec (aref x i)))
+      (aset state i (aref aes-s-boxes-dec (aref state i)))
       (setq i (1+ i)))))
 
 (defsubst aes-SubWord (x)
-  "Apply the encryption S-box to all 4 bytes of the string X."
-  (aset x 0 (aref aes-S-boxes-enc (aref x 0)))
-  (aset x 1 (aref aes-S-boxes-enc (aref x 1)))
-  (aset x 2 (aref aes-S-boxes-enc (aref x 2)))
-  (aset x 3 (aref aes-S-boxes-enc (aref x 3))))
+  "Apply the SubBytes transformation to all 4 bytes of the string X."
+  (aset x 0 (aref aes-s-boxes-enc (aref x 0)))
+  (aset x 1 (aref aes-s-boxes-enc (aref x 1)))
+  (aset x 2 (aref aes-s-boxes-enc (aref x 2)))
+  (aset x 3 (aref aes-s-boxes-enc (aref x 3))))
 
 (defsubst aes-SubWord-b (x)
-  "Apply the encryption S-box to all 4 bytes of X."
-  (setcar (car x) (aref aes-S-boxes-enc (car (car x))))
-  (setcdr (car x) (aref aes-S-boxes-enc (cdr (car x))))
-  (setcar (cdr x) (aref aes-S-boxes-enc (car (cdr x))))
-  (setcdr (cdr x) (aref aes-S-boxes-enc (cdr (cdr x)))))
+  "Apply the SubBytes transformation to all 4 bytes of X.
+X is of the form ((A . B) . (C . D))."
+  (setcar (car x) (aref aes-s-boxes-enc (car (car x))))
+  (setcdr (car x) (aref aes-s-boxes-enc (cdr (car x))))
+  (setcar (cdr x) (aref aes-s-boxes-enc (car (cdr x))))
+  (setcdr (cdr x) (aref aes-s-boxes-enc (cdr (cdr x)))))
 
-;# Shift Rows
+;# ShiftRows Transformation
 
-(defun aes-ShiftRows (state Nb)
-  "Apply the shift rows transformation to state."
-  (let ((border (lsh (1- Nb) 2)))
-    (let* ((x (aref state 1)) (c 1))
-      (while (< c border)
-        (aset state c (aref state (+ c 4)))
-        (setq c (+ c 4)))
-      (aset state c x))
+(defun aes-ShiftRows (state)
+  "Apply the shift rows transformation destructively in STATE.
+The length of STATE must be a multiple of 4 and larger than 12."
+  ;; For a description of ShiftRows see [1, Ch 4.2.2] or [2, Ch 5.1.2]
+  (let* ((border (- (length state) 4))
+         (x (aref state 1))
+         (c 1)
+         (y (aref state 6))
+         (z (aref state 11)))
+    (while (< c border)
+      (aset state c (aref state (+ c 4)))
+      (setq c (+ c 4)))
+    (aset state c x)
+    (setq x (aref state 2))
+    (setq c 2)
     (setq border (- border 4))
-    (let* ((x (aref state 2)) (y (aref state 6)) (c 2))
-      (while (< c border)
-        (aset state c (aref state (+ c 8)))
-        (setq c (+ c 4)))
-      (aset state c x) (aset state (+ c 4) y))
+    (while (< c border)
+      (aset state c (aref state (+ c 8)))
+      (setq c (+ c 4)))
+    (aset state c x)
+    (aset state (+ c 4) y)
+    (setq x (aref state 3))
+    (setq y (aref state 7))
+    (setq c 3)
     (setq border (- border 4))
-    (let* ((x (aref state 3)) (y (aref state 7)) (z (aref state 11)) (c 3))
-      (while (< c border)
-        (aset state c (aref state (+ c 12)))
-        (setq c (+ c 4)))
-      (aset state c x) (aset state (+ c 4) y) (aset state (+ c 8) z))))
+    (while (< c border)
+      (aset state c (aref state (+ c 12)))
+      (setq c (+ c 4)))
+    (aset state c x)
+    (aset state (+ c 4) y)
+    (aset state (+ c 8) z)))
 
-(defun aes-InvShiftRows (state Nb)
-  "Apply the inverted shift rows transformation to state."
-  (let ((Nb4 (lsh Nb 2)))
-    (let* ((c (- Nb4 3)) (x (aref state c)))
-      (while (< 4 c) (aset state c (aref state (setq c (- c 4)))))
-      (aset state c x))
-    (let* ((c (- Nb4 2)) (x (aref state c)) (y (aref state (- c 4))))
-      (while (< 8 c) (aset state c (aref state (- c 8))) (setq c (- c 4)))
-      (aset state c x) (aset state (- c 4) y))
-    (let* ((c (- Nb4 1))
-           (x (aref state c)) (y (aref state (- c 4))) (z (aref state (- c 8))))
-      (while (< 12 c) (aset state c (aref state (- c 12))) (setq c (- c 4)))
-      (aset state c x) (aset state (- c 4) y) (aset state (- c 8) z))))
+(defun aes-InvShiftRows (state)
+  "Apply the inverted shift rows transformation destructively in STATE.
+The length of STATE must be a multiple of 4 and larger than 12."
+  ;; For a description of InvShiftRows see [1, Ch 4.2.2] or [2, Ch 5.3.1]
+  (let* ((Nb4 (length state))
+         (c (- Nb4 3))
+         (x (aref state c))
+         (y (aref state (- Nb4 6)))
+         (z (aref state (- Nb4 9))))
+    (while (< 4 c)
+      (aset state c (aref state (setq c (- c 4)))))
+    (aset state 1 x)
+    (setq x (aref state (setq c (- Nb4 2))))
+    (while (< 8 c)
+      (aset state c (aref state (- c 8)))
+      (setq c (- c 4)))
+    (aset state 6 x)
+    (aset state 2 y)
+    (setq x (aref state (setq c (- Nb4 1))))
+    (setq y (aref state (- c 4)))
+    (while (< 12 c)
+      (aset state c (aref state (- c 12)))
+      (setq c (- c 4)))
+    (aset state 11 x)
+    (aset state 7 y)
+    (aset state 3 z)))
+;(let ((s "0123456789abcdef")) (aes-ShiftRows s) s)
 
-;# Sub-Bytes Shift-Rows Mix-Columns Add Keys
+;# Combined Round Transformation
 
 (defun aes-SubShiftMixKeys (state keys r)
-  "Apply the transformations SubBytes, ShiftRows, mix columns and addkeys to state."
+  "Apply one round of the aes encryption to the string STATE.
+KEYS is a string containing the expanded key schedule.
+R is the number of the encryption round.
+In one round the 4 transformations SubBytes, ShiftRows, MixColumns and
+AddRoundKey are applied to STATE.
+The length of STATE is a multiple of 4 and larger than 12.
+The length of KEYS is at least (* (length STATE) (1+ R))."
+  ;; For a description of MixColumns see [1, Ch 4.2.3] or [2, Ch 5.1.3]
+  ;; For a description of AddRoundKey see [1, Ch 4.2.4] or [2, Ch 5.1.4]
   (let* ((copy (copy-sequence state))
          (x4 0)
          (Nb4 (length state))
-         (xrNb4 (* r Nb4)))
+         (xrNb4 (* r Nb4))
+         s0 s1 s2 s3)
     (while (< x4 Nb4)
-      (let ((s0 (aref aes-S-boxes-enc (aref copy x4)))
-            (s1 (aref aes-S-boxes-enc (aref copy (% (+ x4 1 4) Nb4))))
-            (s2 (aref aes-S-boxes-enc (aref copy (% (+ x4 2 8) Nb4))))
-            (s3 (aref aes-S-boxes-enc (aref copy (% (+ x4 3 12) Nb4)))))
-        (aset state x4 (logxor (aref aes-l2 s0) (aref aes-l3 s1) s2 s3
-                               (aref keys xrNb4)))
-        (aset state (1+ x4) (logxor s0 (aref aes-l2 s1) (aref aes-l3 s2) s3
-                                    (aref keys (1+ xrNb4))))
-        (aset state (+ 2 x4) (logxor s0 s1 (aref aes-l2 s2) (aref aes-l3 s3)
-                                     (aref keys (+ xrNb4 2))))
-        (aset state (+ 3 x4) (logxor (aref aes-l3 s0) s1 s2 (aref aes-l2 s3)
-                                     (aref keys (+ xrNb4 3)))))
-      (setq x4 (+ x4 4))
-      (setq xrNb4 (+ xrNb4 4)))))
+      (setq s0 (aref aes-s-boxes-enc (aref copy x4)))
+      (setq s1 (aref aes-s-boxes-enc (aref copy (% (+ x4 1 4) Nb4))))
+      (setq s2 (aref aes-s-boxes-enc (aref copy (% (+ x4 2 8) Nb4))))
+      (setq s3 (aref aes-s-boxes-enc (aref copy (% (+ x4 3 12) Nb4))))
+      (aset state x4 (logxor (aref aes-l2 s0) (aref aes-l3 s1) s2 s3
+                             (aref keys xrNb4)))
+      (aset state (1+ x4) (logxor s0 (aref aes-l2 s1) (aref aes-l3 s2) s3
+                                  (aref keys (1+ xrNb4))))
+      (aset state (+ 2 x4) (logxor s0 s1 (aref aes-l2 s2) (aref aes-l3 s3)
+                                   (aref keys (+ 2 xrNb4))))
+      (aset state (+ 3 x4) (logxor (aref aes-l3 s0) s1 s2 (aref aes-l2 s3)
+                                   (aref keys (+ 3 xrNb4))))
+      (setq x4 (+ 4 x4))
+      (setq xrNb4 (+ 4 xrNb4)))))
 ; (byte-compile 'aes-SubShiftMixKeys)
 
 (defun aes-SubShiftMixKeys-b (state keys)
-  "Apply the transformations SubBytes, ShiftRows, mix columns and addkeys to state."
+  "See `aes-SubShiftMixKeys' for documentation."
   (let* ((copy (copy-sequence state))
          (x4 0)
-         (Nb4 (length state)))
+         (Nb4 (length state))
+         s0 s1 s2 s3 keyA)
     (while (< x4 Nb4)
-      (let ((s0 (aref aes-S-boxes-enc (aref copy x4)))
-            (s1 (aref aes-S-boxes-enc (aref copy (% (+ x4 1 4) Nb4))))
-            (s2 (aref aes-S-boxes-enc (aref copy (% (+ x4 2 8) Nb4))))
-            (s3 (aref aes-S-boxes-enc (aref copy (% (+ x4 3 12) Nb4))))
-            (keyA (car keys)))
-        (aset state x4 (logxor (aref aes-l2 s0) (aref aes-l3 s1) s2 s3
-                               (car (car keyA))))
-        (aset state (1+ x4)
-              (logxor s0 (aref aes-l2 s1) (aref aes-l3 s2) s3
-                      (cdr (car keyA))))
-        (aset state (+ 2 x4)
-              (logxor s0 s1 (aref aes-l2 s2) (aref aes-l3 s3)
-                      (car (cdr keyA))))
-        (aset state (+ 3 x4)
-              (logxor (aref aes-l3 s0) s1 s2 (aref aes-l2 s3)
-                      (cdr (cdr keyA)))))
+      (setq s0 (aref aes-s-boxes-enc (aref copy x4)))
+      (setq s1 (aref aes-s-boxes-enc (aref copy (% (+ x4 1 4) Nb4))))
+      (setq s2 (aref aes-s-boxes-enc (aref copy (% (+ x4 2 8) Nb4))))
+      (setq s3 (aref aes-s-boxes-enc (aref copy (% (+ x4 3 12) Nb4))))
+      (setq keyA (car keys))
+      (aset state x4 (logxor (aref aes-l2 s0) (aref aes-l3 s1) s2 s3
+                             (car (car keyA))))
+      (aset state (1+ x4) (logxor s0 (aref aes-l2 s1) (aref aes-l3 s2) s3
+                                  (cdr (car keyA))))
+      (aset state (+ 2 x4) (logxor s0 s1 (aref aes-l2 s2) (aref aes-l3 s3)
+                                   (car (cdr keyA))))
+      (aset state (+ 3 x4) (logxor (aref aes-l3 s0) s1 s2 (aref aes-l2 s3)
+                                   (cdr (cdr keyA))))
       (setq keys (cdr keys))
       (setq x4 (+ x4 4)))))
 ; (byte-compile 'aes-SubShiftMixKeys-b)
 
-;(let* ((Nb 4)
-;       (plain (concat [#x00 #x11 #x22 #x33 #x44 #x55 #x66 #x77 #x88 #x99
+;(let* ((plain (concat [#x00 #x11 #x22 #x33 #x44 #x55 #x66 #x77 #x88 #x99
 ;                            #xaa #xbb #xcc #xdd #xee #xff]))
+;       (Nb (lsh (length plain) -2))
 ;       (key (concat [#x00 #x01 #x02 #x03 #x04 #x05 #x06 #x07 #x08 #x09
 ;                          #x0a #x0b #x0c #x0d #x0e #x0f]))
-;       (keys (aes-KeyExpansion key Nb))
+;       (Nk (lsh (length key) -2))
+;       (Nr (+ (max Nb Nk) 6))
+;       (keys (aes-KeyExpansion key Nb Nr))
 ;       )
+;  (length keys))(/ 176 4)
 ;  (aes-SubShiftMixKeys plain 4 keys 1)
 ;  (prin1 (aes-str-to-b plain) 'insert)
 ;  )
 ;(((181 . 211) 146 . 36) ((38 . 200) 137 . 140) ((119 . 160) 68 . 5) ((4 . 64) 252 . 93))
-;
 ;
 ;(let* ((Nb 4)
 ;       (plain (concat [#x00 #x11 #x22 #x33 #x44 #x55 #x66 #x77 #x88 #x99
@@ -388,43 +466,40 @@ The S-boxes are stored as strings of length 256.")
 ;                           #x0a #x0b #x0c #x0d #x0e #x0f])))
 ;       (keys (aes-KeyExpansion-b key Nb))
 ;       )
-;  (aes-SubShiftMixKeys-b plain (nthcdr 4  keys))
-;  (prin1 (aes-str-to-b plain) 'insert)
-;  )
-;
-;(15.693999999999999 299 4.898999999999749)
-;(15.709000000000001 298 4.916000000000027)
-;
-;(let ((x '(1 2 3 4 5 6 7 8 9 9)))
-;(eq (nthcdr 4 x)
-;    (cdr (cdr (cdr (cdr x))))))
+;  (prin1
+;   (benchmark-run-compiled
+;    1000000
+;    (aes-SubShiftMixKeys-b plain keys))
+;   'insert))
 
 ;# Sub-Bytes Shift-Rows Mix-Columns Add Keys Inverse
 
 (defun aes-InvSubShiftMixKeys (state keys r)
-  "Apply the 3 inverted transformations to state."
+  "Apply the 4 inverted transformations to state."
+  ;; For a description of InvMixColumns see [1, Ch 4.2.3] or [2, Ch 5.3.3]
+  ;; For a description of InvAddRoundKey see [1, Ch 4.2.4] or [2, Ch 5.3.4]
   (let* ((copy (copy-sequence state))
          (x4 0)
          (Nb4 (length state))
-         (xrNb4 (* r Nb4)))
+         (xrNb4 (* r Nb4))
+         s0 s1 s2 s3)
     (while (< x4 Nb4)
-      (let ((s0 (logxor (aref copy x4) (aref keys xrNb4)))
-            (s1 (logxor (aref copy (1+ x4)) (aref keys (1+ xrNb4))))
-            (s2 (logxor (aref copy (+ 2 x4)) (aref keys (+ 2 xrNb4))))
-            (s3 (logxor (aref copy (+ 3 x4)) (aref keys (+ 3 xrNb4)))))
-        (aset state x4
-              (aref aes-S-boxes-dec (logxor (aref aes-le s0) (aref aes-lb s1)
-                                            (aref aes-ld s2) (aref aes-l9 s3))))
-        (aset state (% (+ 1 4 x4) Nb4)
-              (aref aes-S-boxes-dec (logxor (aref aes-l9 s0) (aref aes-le s1)
-                                            (aref aes-lb s2) (aref aes-ld s3))))
-        (aset state (% (+ 2 8 x4) Nb4)
-              (aref aes-S-boxes-dec (logxor (aref aes-ld s0) (aref aes-l9 s1)
-                                            (aref aes-le s2) (aref aes-lb s3))))
-        (aset state (% (+ 3 12 x4) Nb4)
-              (aref aes-S-boxes-dec
-                    (logxor (aref aes-lb s0) (aref aes-ld s1)
-                            (aref aes-l9 s2) (aref aes-le s3)))))
+      (setq s0 (logxor (aref copy x4) (aref keys xrNb4)))
+      (setq s1 (logxor (aref copy (1+ x4)) (aref keys (1+ xrNb4))))
+      (setq s2 (logxor (aref copy (+ 2 x4)) (aref keys (+ 2 xrNb4))))
+      (setq s3 (logxor (aref copy (+ 3 x4)) (aref keys (+ 3 xrNb4))))
+      (aset state x4
+            (aref aes-s-boxes-dec (logxor (aref aes-le s0) (aref aes-lb s1)
+                                          (aref aes-ld s2) (aref aes-l9 s3))))
+      (aset state (% (+ 1 4 x4) Nb4)
+            (aref aes-s-boxes-dec (logxor (aref aes-l9 s0) (aref aes-le s1)
+                                          (aref aes-lb s2) (aref aes-ld s3))))
+      (aset state (% (+ 2 8 x4) Nb4)
+            (aref aes-s-boxes-dec (logxor (aref aes-ld s0) (aref aes-l9 s1)
+                                          (aref aes-le s2) (aref aes-lb s3))))
+      (aset state (% (+ 3 12 x4) Nb4)
+            (aref aes-s-boxes-dec (logxor (aref aes-lb s0) (aref aes-ld s1)
+                                          (aref aes-l9 s2) (aref aes-le s3))))
       (setq x4 (+ x4 4))
       (setq xrNb4 (+ xrNb4 4)))))
 
@@ -461,7 +536,7 @@ Append the first byte to the end."
             (progn (aes-RotWord temp)
                    (aes-SubWord temp)
                    (setq temp (aes-xor-4 temp rcon))
-                   (aset rcon 0 (aes-Mul (aref rcon 0) 2)))
+                   (aset rcon 0 (aes-mul (aref rcon 0) 2)))
           (if (and (< 6 Nk) (= (% (lsh i -2) Nk) 4))
               (aes-SubWord temp)))
         (store-substring
@@ -498,7 +573,7 @@ Append the first byte to the end."
             (progn (aes-RotWord-b temp)
                    (aes-SubWord-b temp)
                    (aes-xor-4-des-b temp rcon)
-                   (setcar (car rcon) (aes-Mul (car (car rcon)) 2)))
+                   (setcar (car rcon) (aes-mul (car (car rcon)) 2)))
           (if (and (< 6 Nk) (= (% i Nk) 4))
               (aes-SubWord-b temp)))
         (setq w (cons (aes-xor-4-b (nth 3 w) temp) w))
@@ -561,7 +636,7 @@ Assumes that input and keys are of the correct length."
       (aes-SubShiftMixKeys state keys r)
       (setq r (1+ r)))
     (aes-SubBytes state)
-    (aes-ShiftRows state Nb)
+    (aes-ShiftRows state)
     (aes-AddRoundKey state keys Nr Nb)
     state))
 
@@ -575,10 +650,10 @@ Assumes that input and keys are of the correct length."
     (store-substring state 0 input)
     (aes-AddRoundKey-b state keys)
     (while (< r Nr)
-      (aes-SubShiftMixKeys-b state (setq keys (nthcdr 4 keys)))
+      (aes-SubShiftMixKeys-b state (setq keys (nthcdr Nb keys)))
       (setq r (1+ r)))
     (aes-SubBytes state)
-    (aes-ShiftRows state Nb)
+    (aes-ShiftRows state)
     (aes-AddRoundKey-b state (nthcdr 4 keys))
     state))
 ; (byte-compile 'aes-Cipher-b)
@@ -625,7 +700,7 @@ Assumes that input and keys are of the correct length."
                    (- Nr 1))))
     (store-substring state 0 input)
     (aes-AddRoundKey state keys Nr Nb)
-    (aes-InvShiftRows state Nb)
+    (aes-InvShiftRows state)
     (aes-InvSubBytes state)
     (while (< 0 r)
       (aes-InvSubShiftMixKeys state keys r)
