@@ -1,15 +1,106 @@
 ;;; aes.el --- Implementation of AES in emacs lisp
 
-;; Revision: $Id: aes.el 25 2008-09-24 20:20:19Z mhoram $
+;; Copyright (C) 2008 Markus Sauermann
 
+;; This program is free software; you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation; either version 2 of
+;; the License, or (at your option) any later version.
+
+;; This program is distributed in the hope that it will be
+;; useful, but WITHOUT ANY WARRANTY; without even the implied
+;; warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+;; PURPOSE.  See the GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public
+;; License along with this program; if not, write to the Free
+;; Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+;; Boston, MA 02110-1301 USA
+
+;; Author: Markus Sauermann <mhoram@glory.to>
+;; Maintainer: Markus Sauermann <mhoram@glory.to>
+;; Created: 15 Feb 2008
+;; Version: 0.1
+;; Revision: $Id: aes.el 26 2008-09-24 22:53:47Z mhoram $
+;; Keywords: data tools
+
+;;; Commentary:
+
+;; Configfile:
+;; Insert "(require 'aes)" into your local .emacs file to load this library.
 ;; Insert "(aes-enable-auto-decryption)" into yout local .emacs file for
-;; convenience.
+;; convenient automatic recoginzation of encrypted files during loading.
 
-;; Bugs:
+;; Whenever possible, this library should be used byte-compiled, as this
+;; provides a great performance boost!
+
+;; Main entry functions:
+;; `aes-encrypt-current-buffer' ask for password and encrypt current buffer
+;; `aes-decrypt-current-buffer' ask for password and decrypt current buffer
+;; `aes-insert-password' Generate a random password from user input
+;; For customizing this library, there is the customization group aes in the
+;; applications group.
+
+;; Emacs version 22 is required. I did not test it with version 21, but there
+;; are probably some incompatible hooks used.
+
+;; This library implements the Rijndael algorithm [1] natively! in emacs.
+;; This is a superset of the AES algorithm [2].
+;; Further this library contains implementations of Cipher-block chaining [4]
+;; and Offset Codebook Mode [5].
+;; For patent issues about OCB see [6], which allows this distribution.
+;; This library allows to encrypt and decrypt buffers or strings.
+
+;; This implementation allows additionally to the AES specification blocklengths
+;; of 24 and 32 bytes.
+
+;; Since emacs implements integers as 29 bit numbers, it is not possible to
+;; use the best possible optimization, which requires 32 bit numbers. For
+;; details see [3].
+;; This leads to the usage of an 8-bit design for this implementation.
+;; So it was necessary to find fitting implementations.
+;; - Multiplication and Inverting in GF(2^8) are implemented as a table lookups.
+;; - The state is implemented as a string of length 4 * Nb.
+;; - Plaintext and ciphertext are implemented as unibyte strings.
+;; - The expanded key is implemented as a list of length 4 * Nb * (1 + Nr)
+;;   with entries '((A . B) . (C . D)), where A, B, C and D are integers between
+;;   0 and 255 inclusive. It is precalculated before the usage of AES.
+;;   For decryption it is necessary to introduce an extended representation
+;;   of the expanded key, since the application of the keys is against the
+;;   internal stored order and emacs makes travelling a list in the opposite
+;;   direction not easy.
+;; - The S-boxes are implemented by lookup tables and only used during
+;;   key expansion and only one round of an en-/decryption.
+;; - The three operations ByteSub, ShiftRow and MixColumn together with Round
+;;   key-addition are implemented in the single function `aes-SubShiftMixKeys'
+;;   and `aes-InvSubShiftMixKeys' respectively for encryption and decryption.
+;; - CBC mode is implemented straightforward, using a 0-padding to the full
+;;   blocklength. The IV is appended to the ciphertext.
+;; - OCB mode made the implementation of a pmac, based on AES, necessary, but
+;;   the further details were straightforward. The IV is appended to the
+;;   ciphertext. During decryption the created hash-value is checked.
+;; - the function `aes-key-from-passwd' generates an AES key from an user input
+;;   string (password).
+;; - Further a facility is provided to generate random passwords, based on
+;;   random user input like mousemovement, time and keyinput.
+;; - The ciphertext is usually converted to a base-64 encoded string.
+
+;; This implementation is not resistant against DPA attacks!
+
+;; Known Bugs:
 ;; - Encrypted buffers are Auto-Saved unencrypted
 ;; - exiting emacs via C-x-c saves buffers unencrypted
 
-;# XOR
+;; [1] http://csrc.nist.gov/archive/aes/rijndael/Rijndael-ammended.pdf
+;; [2] http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf
+;; [3] http://www.openssl.org/
+;; [4] http://en.wikipedia.org/wiki/Block_cipher_modes_of_operation
+;; [5] http://www.cs.ucdavis.edu/~rogaway/ocb/
+;; [6] http://www.cs.ucdavis.edu/~rogaway/ocb/grant.htm
+
+;;; Code:
+
+;# xor
 
 (defun aes-xor (x y)
   "Return X and Y bytewise xored as string."
@@ -60,6 +151,18 @@
       (setq i (+ i 4)))
     (nreverse res)))
 ; (aes-str-to-b "0123456789abcdef")
+
+(defun aes-list-expander (l &optional len)
+  "Create an expanded list of L.
+The created list has as K-th element the list L, starting at position K.
+The created list has length LEN, if non-nil, or the same length as L."
+  (let* ((res (make-list (or len (length l)) nil))
+         (rp res))
+    (while (and (setcar rp l)
+                (setq rp (cdr rp))
+                (setq l (cdr l))))
+    res))
+; (aes-list-expander '(1 2))
 
 ;# Multiplication
 
@@ -864,14 +967,13 @@ aes-plaintext-passwords."
     key))
 
 (defcustom aes-password-char-groups
-  '((?a t "abcdefghjkmnopqrstuvwxyz") ;; downcase letters, i and l excluded
-    (?A t "ABCDEFGHJKLMNPQRSTUVWXYZ") ;; upcase letters, I and O excluded
-    (?5 t "23456789") ;; numbers, 0 and 1 excluded
-    (?0 t "0OilI1") ;; characters difficult to distinguish
-    (?. t ",.!?;:_()[]{}<>-+*/=") ;; punctuation, brackets and calculation
-    (?| nil "|^~") ;; difficult to type
-    (?ä nil "äöüÄÖÜß") ;; german mutated vowels and Eszett
-    (?% t "#$%&")) ;; others
+  '((?a t "abcdefghjkmnopqrstuvwxyz") ; downcase letters, i and l excluded
+    (?A t "ABCDEFGHJKLMNPQRSTUVWXYZ") ; upcase letters, I and O excluded
+    (?5 t "23456789")                 ; numbers, 0 and 1 excluded
+    (?0 t "0OilI1")                   ; characters difficult to distinguish
+    (?. nil ",.!?;:_()[]{}<>")        ; punctuation and brackets
+    (?+ nil "-+*/=")                  ; calculation
+    (?% nil "|^~#$%&'"))              ; others
   "Groups of characters for password generation.
 The first entry in each list is a character, which can be used in the
 argument TYP of aes-generate-password to refer to this password
@@ -886,13 +988,13 @@ this group used for password generation."
 ;; (customize-group 'aes)
 
 (defun aes-fisher-yates-shuffle-string (s)
-  (let ((i (- (length s) 1)))
+  (let ((i (1- (length s))))
     (while (< 0 i)
-      (let ((j (random (+ i 1)))
+      (let ((j (random (1+ i)))
             (temp (aref s i)))
         (aset s i (aref s j))
         (aset s j temp))
-      (setq i (- i 1))))
+      (setq i (1- i))))
   s)
 ;, (aes-fisher-yates-shuffle-string "abcdefghijklmnopqrestuvwxyz")
 
@@ -905,7 +1007,7 @@ Otherwise use emacs internal pseudo random number generator."
 (defun aes-provide-entropy (len &optional localmax)
   "Return an entropy string of LEN characters.
 Read entropy from keyboard and mouse.
-It is assumed that a keyboard event provides 4 bit of entropy and a mouse
+It is assumed that a keyboard event provides 8 bit of entropy and a mouse
 event 8 bits of entropy."
   (unless localmax (setq localmax 256))
   (if (not aes-user-interaction-entropy)
@@ -922,15 +1024,15 @@ event 8 bits of entropy."
       (while (< (/ read-bits 8) ctr)
         (let ((eve (track-mouse (read-event (format "Provide Entropy by pressing keys and clicking mouse at random locations or moving the mouse. (%2.2f%%): " (* 100 (/ read-bits 8.0 ctr)))))))
           (setq read-bits (+ read-bits (if (listp eve)
-                                           (+ 1 ;; eventtype
-                                              1 ;; window
-                                              6 ;; position
-                                              8 ;; time
-                                            ) ;; Mouse
+                                           (+ 1 ; eventtype
+                                              1 ; window
+                                              5 ; position
+                                              1 ; time
+                                              ) ; Mouse
                                          (setq input (concat input (format "%S" (current-time))))
-                                         (+ 4 ;; character
-                                            8 ;; time
-                                            )))) ;; Key
+                                         (+ 4    ; character
+                                            4    ; time
+                                            )))) ; Key
           (setq input (concat input (format "%S" eve)))))
       (while (< (length res1) len)
         (let* ((iv (let ((res (make-string 16 0)))
@@ -953,6 +1055,7 @@ event 8 bits of entropy."
           (aset res i
                 this)))
       res)))
+; (aes-provide-entropy 10)
 
 (defun aes-generate-password (length &optional typ)
   "Return a password of length LENGTH.
@@ -1218,12 +1321,11 @@ decrypts the whole file and not just the indicated region."
 
 (provide 'aes)
 
-;;; aes.el ends here
-
 ;# Footer
 ;; Local Variables:
-;; coding: utf-8
 ;; mode: outline-minor
 ;; comment-column:0
 ;; outline-regexp: ";#+ "
 ;; End:
+
+;;; aes.el ends here
