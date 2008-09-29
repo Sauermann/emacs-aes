@@ -20,8 +20,8 @@
 ;; Author: Markus Sauermann <mhoram@gmx.de>
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.2
-;; Revision: $Id: aes.el 32 2008-09-28 18:18:31Z mhoram $
+;; Version: 0.3
+;; Revision: $Id: aes.el 34 2008-09-28 21:00:33Z mhoram $
 ;; Keywords: data tools
 
 ;;; Change Log:
@@ -32,13 +32,15 @@
 ;;     - general optimizations
 ;;     documentation written
 ;;     code cleanup
+;; 0.3 Bugfix in password generation
+;;     documentation cleanup
 
 ;;; Commentary:
 
 ;; Config file
 ;; Insert "(require 'aes)" into your local .emacs file to load this library.
 ;; Insert "(aes-enable-auto-decryption)" into yout local .emacs file for
-;; convenient automatic recoginzation of encrypted files during loading.
+;; convenient automatic recognization of encrypted files during loading.
 
 ;; Whenever possible, this library should be used byte-compiled, as this
 ;; provides a great performance boost!
@@ -70,7 +72,7 @@
 
 ;; Since emacs implements integers as 29 bit numbers, it is not possible to
 ;; use the optimization, which requires 32 bit numbers. For details see [3].
-;; This leads to the usage of an 8-bit design for this implementation.
+;; This leads to an 8-bit design for this implementation.
 ;; So the following fitting implementation is used here.
 ;; - Multiplication and inverting in GF(2^8) are implemented as a table lookups.
 ;; - The state is implemented as a string of length 4 * Nb.
@@ -97,7 +99,7 @@
 ;; - Encrypted buffers are Auto-Saved unencrypted.
 ;; - Exiting emacs via C-x-c saves buffers unencrypted.
 ;; - This implementation is not resistant against DPA attacks.
-;; - aes-auto-decrypt is not completely compliant to emacs standards.
+;; - `aes-auto-decrypt' is not completely compliant to emacs standards.
 
 ;; [1] http://csrc.nist.gov/archive/aes/rijndael/Rijndael-ammended.pdf
 ;; [2] http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf
@@ -112,7 +114,7 @@
 
 (defun aes-xor (x y)
   "Return X and Y bytewise xored.
-X and Y and the return values are unibytestrings.
+X and Y and the return values are unibyte strings.
 Y must not be shorter than X."
   (let* ((l (length x))
          (res (make-string l 0))
@@ -126,7 +128,7 @@ Y must not be shorter than X."
   "Calculate X and Y bytewise xored destructively in X.
 X and Y are unibyte strings. Y must not be shorter than X.
 The result is stored in X.
-The returnvalue is X."
+The return value is X."
   (let* ((l (length x))
          (i 0))
     (while (< i l)
@@ -164,14 +166,13 @@ Return a new unibyte string containing the result. V is not changed"
 (defun aes-enlarge-to-multiple-num (n bs)
   "Return the smallest multiple of BS, not smaller than N."
   (+ n (mod (- n) bs) 0))
-; (aes-enlarge-to-multiple-num 17 2)
 
 (defun aes-str-to-b (str)
   "Convert the unibyte string STR to a list-representation.
 The length of STR must be a multiple of 4.
 The length of the resulting list has a quarter of the length of STR.
 Elements 4*K to 4*K+3 of STR (named A, B, C and D in this order) are stored in
-position K of the result as ((A . B) C . D)."
+position K of the result as '((A . B) . (C . D))."
   (let (res
         (l (length str))
         (i 0))
@@ -182,7 +183,6 @@ position K of the result as ((A . B) C . D)."
                  res))
       (setq i (+ i 4)))
     (nreverse res)))
-; (aes-str-to-b "0123456789abcdef")
 
 ;;;; Multiplication
 
@@ -295,7 +295,7 @@ The unibyte string STATE may be of arbitrary length."
 
 (defun aes-SubWord (x)
   "Apply the SubBytes transformation to all 4 bytes of X.
-X is of the form ((A . B) . (C . D))."
+X is of the form '((A . B) . (C . D))."
   (setcar (car x) (aref aes-s-boxes-enc (car (car x))))
   (setcdr (car x) (aref aes-s-boxes-enc (cdr (car x))))
   (setcar (cdr x) (aref aes-s-boxes-enc (car (cdr x))))
@@ -366,7 +366,7 @@ than 12."
 
 ;;;; Combined Single Round Transformation
 
-(defun aes-SubShiftMixKeys (state keys)
+(defsubst aes-SubShiftMixKeys (state keys)
   "Apply one round of the aes encryption destructively to the string STATE.
 KEYS is a list containing a part of the expanded key schedule. See
 `aes-KeyExpansion' for how KEYS looks like.
@@ -398,22 +398,8 @@ The length of the unibyte string STATE is a multiple of 4 and larger than 12."
       (setq keys (cdr keys))
       (setq x4 (+ x4 4)))))
 
-;  (let* ((Nb 4)
-;         (plain (concat [#x00 #x11 #x22 #x33 #x44 #x55 #x66 #x77 #x88 #x99
-;                              #xaa #xbb #xcc #xdd #xee #xff]))
-;         (key (aes-str-to-b
-;               (concat [#x00 #x01 #x02 #x03 #x04 #x05 #x06 #x07 #x08 #x09
-;                             #x0a #x0b #x0c #x0d #x0e #x0f])))
-;         (keys (aes-KeyExpansion key Nb))
-;         )
-;    (prin1
-;     (benchmark-run-compiled
-;      1000000
-;      (aes-SubShiftMixKeys plain keys))
-;     'insert))
-
-(defun aes-InvSubShiftMixKeys (state keys)
-  "Apply the 4 inverted transformations destructively to the string STATE.
+(defsubst aes-InvSubShiftMixKeys (state keys)
+  "Apply the 4 inverted transformations destructively to STATE.
 See `aes-SubShiftMixKeys' for additional information.
 Note that the part of the key espansion KEYS is in the reverse order than it was
 in `aes-SubShiftMixKeys'."
@@ -461,7 +447,7 @@ KEY is a list of NK elements with entries '((A . B) . (C . D)), where A, B, C
 and D are bytes.
 NB, NK and NR are defined in the Commentary section of the sourcecode.
 The expanded key is a list of length 4 * Nb * (1 + Nr) with
-entries of the same form as KEY."
+entries of the same form as in KEY."
   ;; For a description of the key expansion see [1, Ch 4.3.1] or [2, Ch 5.2]
   (let* ((Nk (length key))
          (w (reverse key))
@@ -488,7 +474,6 @@ entries of the same form as KEY."
       (setq w (cons (aes-xor-4 (nth 3 w) temp) w))
       (setq i (1+ i)))
     (nreverse w)))
-;; (prin1 (aes-KeyExpansion (aes-str-to-b "0123456789abcdef") 4) 'insert)
 
 ;;;; Add Round Key
 
@@ -558,21 +543,6 @@ The length of KEYS is (1 + NR) * NB."
     (aes-AddRoundKey state (nthcdr Nb keys))
     state))
 
-;(let* ((Nb 4)
-;       (plain (concat [#x00 #x11 #x22 #x33 #x44 #x55 #x66 #x77 #x88 #x99
-;                            #xaa #xbb #xcc #xdd #xee #xff]))
-;       (key (aes-str-to-b
-;             (concat [#x00 #x01 #x02 #x03 #x04 #x05 #x06 #x07 #x08 #x09
-;                           #x0a #x0b #x0c #x0d #x0e #x0f])))
-;       (keys (aes-KeyExpansion key Nb))
-;       )
-;  (prin1
-;   (benchmark-run-compiled
-;    100000
-;    (aes-Cipher plain keys Nb))
-;   'insert)
-;  )
-
 (defsubst aes-InvCipher (cipher keys Nb &optional Nr)
   "Perform a complete aes decryption of the unibyte string CIPHER.
 Return a new string containing the decrypted string CIPHER.
@@ -591,22 +561,6 @@ The length of KEYS is (1 + NR) * NB."
       (setq r (1- r)))
     (aes-InvAddRoundKey state (nthcdr Nb keys))
     state))
-
-;(let* ((Nb 4)
-;       (plain (concat [#x00 #x11 #x22 #x33 #x44 #x55 #x66 #x77 #x88 #x99
-;                            #xaa #xbb #xcc #xdd #xee #xff]))
-;       (key (aes-str-to-b
-;             (concat [#x00 #x01 #x02 #x03 #x04 #x05 #x06 #x07 #x08 #x09
-;                           #x0a #x0b #x0c #x0d #x0e #x0f])))
-;       (keys (aes-KeyExpansion key Nb))
-;       (cipher (aes-Cipher plain keys Nb)))
-;  (setq keys (nreverse keys))
-;   (prin1
-;    (benchmark-run-compiled
-;        1000000
-;  (aes-ds (aes-InvCipher cipher keys Nb))
-;      ) 'insert)
-;  )
 
 ;;;; Cipher-Block Chaining
 
@@ -674,7 +628,6 @@ This is done destructively in X.
 Return X."
   ;; For a description of the multiplication see [4, Ch 2]
   (aes-xor-de x (aes-128-double-de (copy-sequence x))))
-; (let ((a "0123456789abcdef")) (aes-128-triple-de a) a)
 
 (defun aes-num2str (x n)
   "Calculate the N-byte representation of the number X.
@@ -686,7 +639,6 @@ where the most significant byte is at position 0."
       (aset res (setq offset (1- offset)) (logand x #xff))
       (setq x (lsh x -8)))
     res))
-;(aes-num2str 258 16)
 
 (defun aes-pmac (header keys Nb)
   "Calculate the pmac of HEADER using aes encryption.
@@ -847,7 +799,6 @@ Warning: passwords are stored in plaintext and can be read by anyone with
 access to the current emacs session.
 Every entry of this list consists of (A . B), where A and B are strings.
 With A the password B can be refered to.")
-;; (setq aes-plaintext-passwords)
 
 (defun aes-clear-plaintext-keys ()
   "Remove all stored plaintext passwords."
@@ -979,7 +930,6 @@ This is done destructively in S. The result is returned."
       (aset s (setq j (random i))
             (prog1 (aref s (setq i (1- i))) (aset s i (aref s j))))))
   s)
-;, (aes-fisher-yates-shuffle-array "abc")
 
 (defcustom aes-user-interaction-entropy t
   "Query User for Entropy if non-nil.
@@ -990,7 +940,7 @@ Otherwise use emacs internal pseudo random number generator."
   :group 'aes)
 
 (defcustom aes-entropy-of-mousemovement 4
-  "The bit-entropy of a mousemevement event."
+  "The bit-entropy of a mouse movement event."
   :type 'integer
   :group 'aes)
 
@@ -1004,8 +954,9 @@ Otherwise use emacs internal pseudo random number generator."
 The length of the list is LEN and each integer in the list is in the range from
 0 inclusive to LOCALMAX exclusive.
 Read user entropy from keyboard and mouse to generate the random number
-sequence.
-An approximation is displayed of how much entropy is already generated.
+sequence, if `aes-user-interaction-entropy' is non-nil; otherwise use the
+elisp function `random'.
+Display an approximation of how much entropy is already generated.
 Changing the window-size during the process will cause problems."
   (unless localmax (setq localmax 256))
   (if (not aes-user-interaction-entropy)
@@ -1108,7 +1059,7 @@ Changing the window-size during the process will cause problems."
                                 (< (length res) len))
                       (let ((nu 0))
                         (dotimes (i extract)
-                          (setq nu (logxor (lsh nu 8) (aref preres 0))))
+                          (setq nu (logxor (lsh nu 8) (aref preres i))))
                         (if (< nu maxborder)
                             (setq res (cons (/ nu maxfac) res))))
                       (setq preres (substring preres extract)))
@@ -1117,7 +1068,6 @@ Changing the window-size during the process will cause problems."
                     (setq tempentropybits 0)
                     (setq tempentropy ""))))))
         res))))
-; (aes-provide-entropy 10)
 
 (defun aes-generate-password (length &optional typ)
   "Return a password of length LENGTH.
@@ -1149,14 +1099,17 @@ the car values of `aes-password-char-groups'."
 
 (defun aes-insert-password (length)
   "Insert a newly generated password at point.
-LENGTH denotes the length of the password."
+LENGTH denotes the length of the password. The used characters are defined
+in the variable `aes-password-char-groups'. Use mouse movement and user input
+as input for the pseudo randon number generator, if
+`aes-user-interaction-entropy' is non-nil."
   (interactive "NLength of password: ")
   (insert (aes-generate-password length)))
 
 ;;;; buffer and string en-/decryption
 
 (defun aes-toggle-representation (s)
-  "Toggles string S between unibyte and multibyte.
+  "Toggle string S between unibyte and multibyte.
 Return a new string containing the other representation."
   (let ((mb (multibyte-string-p s)))
     (with-temp-buffer
@@ -1251,8 +1204,6 @@ Get the key for encryption from the function `aes-key-from-passwd'."
                          (setq buffer-undo-list))
                      t)
           enc)))))
-
-;; (aes-encrypt-buffer-or-string "address.xml" "CBC")
 
 (defun aes-decrypt-buffer-or-string (bos)
   "Decrypt buffer or string BOS. V 1.2
@@ -1399,7 +1350,6 @@ decrypts the whole file and not just the indicated region."
                     t
                     nil)
               format-alist)))
-;; (aes-enable-auto-decryption)
 
 ;;;; Provide
 
