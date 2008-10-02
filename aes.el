@@ -21,7 +21,7 @@
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
 ;; Version: 0.4
-;; Revision: $Id: aes.el 38 2008-09-29 17:59:29Z mhoram $
+;; Revision: $Id$
 ;; Keywords: data tools
 
 ;;; Change Log:
