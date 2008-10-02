@@ -34,8 +34,8 @@
 ;;     code cleanup
 ;; 0.3 Bugfix in password generation
 ;;     documentation cleanup
-;; 0.4 Increased ocb performance dramatically and adjusted usage.
-;;     Replaced aes-ocb-max-default-length by aes-default-method.
+;; 0.4 Increased ocb performance and adjusted possible blocksizes
+;;     Replaced aes-ocb-max-default-length by aes-default-method
 
 ;;; Commentary:
 
@@ -71,7 +71,6 @@
 ;; Nk denotes the number of 32-bit words comprising the cipher key.
 ;; Nr denotes the number of rounds.
 ;; We allow Nb and Nk to be 4, 6, or 8. and Nr = max(Nb, Nk) + 6
-;; For OCB we restrict Nb to 4.
 
 ;; Since Emacs implements integers as 29 bit numbers, it is not possible to
 ;; use the optimization, which requires 32 bit numbers.  For details see [3].
@@ -157,12 +156,6 @@ X and Y are objects of the form '((A . B) . (C . D))"
   (setcar (cdr x) (logxor (car (cdr x)) (car (cdr y))))
   (setcdr (cdr x) (logxor (cdr (cdr x)) (cdr (cdr y)))))
 
-(defun aes-ds (x)
-  "Return the unibyte string X in its hexadecimal representation."
-  (let ((res ""))
-    (dotimes (i (length x)) (setq res (concat res (format "%02x" (aref x i)))))
-    res))
-
 (defun aes-enlarge-to-multiple (v bs)
   "Enlarge unibyte string V to a multiple of number BS and pad with Zeros.
 Return a new unibyte string containing the result.  V is not changed"
@@ -207,10 +200,10 @@ position K of the result as '((A . B) . (C . D))."
     p))
 
 (let ((l (make-string 256 0))
-      (mt (make-vector 256 0))
+      (mt (make-vector #xf 0))
       (x 0)
       i res)
-  (while (< x 256)
+  (while (< x #xf)
     (aset mt x (make-string 256 0))
     (setq x (1+ x)))
   (setq x 1)
@@ -219,59 +212,49 @@ position K of the result as '((A . B) . (C . D))."
     (while (< i 256)
       (setq res (aes-mul-pre i x))
       (if (= #x01 res) (progn (aset l x i) (aset l i x)))
-      (aset (aref mt x) i res)
-      (aset (aref mt i) x res)
+      (and (< x #xf) (aset (aref mt x) i res)
+           (and (< i #xf) (aset (aref mt i) x res)))
       (setq i (1+ i)))
     (setq x (1+ x)))
-  (defconst aes-mul-table mt
-    "This variable contains the GF(2^8) multiplication lookup table.")
   (defconst aes-inv-table l
-    "This variable contains the GF(2^8) inverting lookup table."))
-
-;; The following 6 shortcuts are used during the time critical
-;; functions `aes-SubShiftMixKeys' and `aes-InvSubShiftMixKeys'
-(defconst aes-l2 (aref aes-mul-table #x02))
-(defconst aes-l3 (aref aes-mul-table #x03))
-(defconst aes-l9 (aref aes-mul-table #x09))
-(defconst aes-le (aref aes-mul-table #x0e))
-(defconst aes-lb (aref aes-mul-table #x0b))
-(defconst aes-ld (aref aes-mul-table #x0d))
+    "This variable contains the GF(2^8) inverting lookup table.")
+  ;; The following 6 tables are used during the time critical
+  ;; functions `aes-SubShiftMixKeys' and `aes-InvSubShiftMixKeys'
+  (defconst aes-l2 (aref mt #x02))
+  (defconst aes-l3 (aref mt #x03))
+  (defconst aes-l9 (aref mt #x09))
+  (defconst aes-lb (aref mt #x0b))
+  (defconst aes-ld (aref mt #x0d))
+  (defconst aes-le (aref mt #x0e)))
 
 ;;;; SubBytes Transformation
 
-(defconst aes-s-boxes-pre
-  ;; For a description see [1, Ch 4.2.1] or [2, Ch 5.1.1]
-  (let ((l1 (make-string 256 0))
-        (l2 (make-string 256 0))
-        (x 0))
-    (while (< x 256)
-      (let ((b (aref aes-inv-table x))
-            (g 0)
-            (i 0))
-        (while (< i 8)
-          (setq g (logxor g (lsh (logand 1 (logxor (lsh (logxor b #x63) (- i))
-                                                   (lsh b (- (% (+ i 4) 8)))
-                                                   (lsh b (- (% (+ i 5) 8)))
-                                                   (lsh b (- (% (+ i 6) 8)))
-                                                   (lsh b (- (% (+ i 7) 8)))))
-                                 i)))
-          (setq i (1+ i)))
-        (aset l1 x g)
-        (aset l2 g x))
-      (setq x (1+ x)))
-    (cons l1 l2))
-  "This constant contains the lookup tables for S-boxes.
-It is a pair where the car-value contains the S-box values used for encryption
-and the cdr-value contains the S-box values used for decryption.
+(let ((l1 (make-string 256 0))
+      (l2 (make-string 256 0))
+      (x 0)
+      b g i)
+  (while (< x 256)
+    (setq b (aref aes-inv-table x))
+    (setq g 0)
+    (setq i 0)
+    (while (< i 8)
+      (setq g (logxor g (lsh (logand 1 (logxor (lsh (logxor b #x63) (- i))
+                                               (lsh b (- (% (+ i 4) 8)))
+                                               (lsh b (- (% (+ i 5) 8)))
+                                               (lsh b (- (% (+ i 6) 8)))
+                                               (lsh b (- (% (+ i 7) 8)))))
+                             i)))
+      (setq i (1+ i)))
+    (aset l1 x g)
+    (aset l2 g x)
+    (setq x (1+ x)))
+  (defconst aes-s-boxes-enc l1
+    "This variable contains the encryption S-Boxes.
 The S-boxes are stored as strings of length 256.")
-
-(defconst aes-s-boxes-enc
-  (car aes-s-boxes-pre)
-  "This variable contains the encryption S-Boxes.")
-
-(defconst aes-s-boxes-dec
-  (cdr aes-s-boxes-pre)
-  "This variable contains the decryption S-Boxes.")
+  (defconst aes-s-boxes-dec l2
+    "This variable contains the decryption S-Boxes.
+The S-boxes are stored as strings of length 256."))
+;; For a description see [1, Ch 4.2.1] or [2, Ch 5.1.1]
 
 (defun aes-SubBytes (state)
   "Apply the SubBytes transformation to each byte of the unibyte string STATE.
@@ -467,8 +450,7 @@ entries of the same form as in KEY."
           (progn (aes-RotWord temp)
                  (aes-SubWord temp)
                  (aes-xor-4-de temp rcon)
-                 (setcar (car rcon)
-                         (aref (aref aes-mul-table (car (car rcon))) 2)))
+                 (setcar (car rcon) (aref aes-l2 (car (car rcon)))))
         (if (and (< 6 Nk) (= (% i Nk) 4))
             (aes-SubWord temp)))
       (setq w (cons (aes-xor-4 (nth 3 w) temp) w))
@@ -607,28 +589,38 @@ multiple of the blocksize."
 
 ;;;; Offset Codebook Mode 2.0
 
-(defun aes-128-double-de (x)
-  "Calculate X multiplicated by 2 in a 128 bit field.
-This is done destructively in the unibyte string X of length 16.
-The returnvalue is the result."
+(defun aes-ocb-double-de (x)
+  "Calculate X multiplicated by 2.
+The calculation is done in a bit field according to the length of X.
+This is done destructively in the unibyte string X.
+The length of X is 16, 24, 32, 40, 48, 56 or 64 bytes.
+The return value is the result."
   ;; For a description of the multiplication see [4, Ch 2]
-  (let ((c (lsh (aref x 0) -7))
-        (i 0))
-    (while (< i 15)
-      (aset x i (logand #xff (logxor (lsh (aref x i) 1)
-                                     (lsh (aref x (+ i 1)) -7))))
-      (setq i (1+ i)))
-    ;; the #x87 is the reason why OCB is restricted to Nb=4
-    (aset x 15 (logand #xff (logxor (lsh (aref x 15) 1) (* c #x87)))))
+  (let* ((len (length x))
+         (len1 (and (or (member len '(16 24 32 40 48 56 64))
+                        (error "%s \"%s\" is not allowed."
+                               "The specified blocksize of string" x))
+                    (- len 2)))
+         (c (* (aref [135  135 1061 27 4107 2115 293] (- (lsh len -3) 2))
+               (lsh (aref x 0) -7)))
+         (c1 (logand (lsh c -8) #xff))
+         (i -1))
+    (setq c (logand c #xff))
+    (while (< i len1)
+      (aset x (setq i (1+ i)) (logand #xff (logxor (lsh (aref x i) 1)
+                                                   (lsh (aref x (+ i 1)) -7)))))
+    (aset x i (logxor (aref x i) c1))
+    (aset x (1- len) (logxor (logand #xff (lsh (aref x (1- len)) 1)) c)))
   x)
 
-(defun aes-128-triple-de (x)
-  "Return X multiplicated by 3 in a 128 bit field.
-X and the return value area unibyte strings with length 16.
+(defun aes-ocb-triple-de (x)
+  "Return X multiplicated by 3.
+The calculation is done in a bit field according to the length of X.
+X and the return value area unibyte strings of arbitrary length.
 This is done destructively in X.
 Return X."
   ;; For a description of the multiplication see [4, Ch 2]
-  (aes-xor-de x (aes-128-double-de (copy-sequence x))))
+  (aes-xor-de x (aes-ocb-double-de (copy-sequence x))))
 
 (defun aes-num2str (x n)
   "Calculate the N-byte representation of the number X.
@@ -654,25 +646,25 @@ KEYS is the expanded key as defined in `aes-KeyExpansion'."
          (total-blocks (max 1 (+ whole-blocks (if (= 0 (% l bs)) 0 1))))
          (border (* whole-blocks total-blocks))
          (b (if (= whole-blocks total-blocks) bs (% l bs)))
-         (D (aes-128-triple-de
-             (aes-128-triple-de (aes-Cipher (make-string bs 0) keys Nb))))
+         (D (aes-ocb-triple-de
+             (aes-ocb-triple-de (aes-Cipher (make-string bs 0) keys Nb))))
          (checksum (make-string bs 0))
          (p 0))
     (while (< p border)
-      (aes-128-double-de D)
+      (aes-ocb-double-de D)
       (aes-xor-de
        checksum
        (aes-Cipher (aes-xor D (substring header p (setq p (+ p bs)))) keys Nb)))
-    (aes-128-triple-de (aes-128-double-de D))
+    (aes-ocb-triple-de (aes-ocb-double-de D))
     (if (= b bs)
         (aes-xor-de checksum (substring header (* bs (1- total-blocks))))
-      (aes-128-triple-de D)
+      (aes-ocb-triple-de D)
       (aes-xor-de checksum (concat (substring header (* bs (1- total-blocks)))
                                    (eval-when-compile (char-to-string #x80))
                                    (make-string (- bs b 1) 0))))
     (aes-Cipher (aes-xor D checksum) keys Nb)))
 
-(defun aes-ocb-encrypt (header input iv keys &optional Nb)
+(defun aes-ocb-encrypt (header input iv keys Nb)
   "Encrypt the string INPUT using OCB.
 Additionally generate a pmac of HEADER and INPUT.
 HEADER and INPUT are unibyte strings of arbitrary length.
@@ -682,7 +674,6 @@ IV is a unibyte string of length blocksize containing the initialization vector.
 Return a cons cell (C . P), where C is a unibyte string containing the
 ciphertext and the unibyte string P of blocksize length is the hash value."
   ;; For a description of the ocb encryption see [4, Ch 5]
-  (unless Nb (setq Nb 4))
   (let* ((D (aes-Cipher iv keys Nb))
          (C (make-string (length input) 0))
          P
@@ -695,7 +686,7 @@ ciphertext and the unibyte string P of blocksize length is the hash value."
          (b (if (= whole-blocks total-blocks) blocksize (% l blocksize)))
          (pointer 0))
     (while (< pointer border)
-      (aes-128-double-de D)
+      (aes-ocb-double-de D)
       (setq checksum (aes-xor checksum (substring input pointer
                                                   (+ pointer blocksize))))
       (store-substring C pointer
@@ -705,14 +696,14 @@ ciphertext and the unibyte string P of blocksize length is the hash value."
                                                (setq pointer
                                                      (+ pointer blocksize))))
                                    keys Nb))))
-    (aes-128-double-de D)
+    (aes-ocb-double-de D)
     (let ((pad (aes-Cipher (aes-xor D (aes-num2str (lsh b 3) blocksize))
                            keys
                            Nb))
           (Mm (substring input pointer)))
       (store-substring C pointer (aes-xor Mm (substring pad 0 b)))
       (aes-xor-de checksum (concat Mm (substring pad b))))
-    (setq P (aes-Cipher (aes-xor checksum (aes-128-triple-de D)) keys Nb))
+    (setq P (aes-Cipher (aes-xor checksum (aes-ocb-triple-de D)) keys Nb))
     (if (< 0 (length header)) (aes-xor-de P (aes-pmac header keys Nb)))
     (cons C P)))
 
@@ -742,7 +733,7 @@ Otherwise return nil."
          Mi)
     (setq keys (nreverse keys))
     (while (< pointer border)
-      (aes-128-double-de D)
+      (aes-ocb-double-de D)
       (store-substring
        M pointer
        (setq Mi (aes-xor D (aes-InvCipher
@@ -752,7 +743,7 @@ Otherwise return nil."
                             keys Nb))))
       (aes-xor-de checksum Mi))
     (setq keys (nreverse keys))
-    (aes-128-double-de D)
+    (aes-ocb-double-de D)
     (let* ((pad (aes-Cipher (aes-xor D (aes-num2str (* 8 b) blocksize))
                             keys Nb))
            (Mm (aes-xor (substring
@@ -761,7 +752,7 @@ Otherwise return nil."
       (store-substring M pointer Mm)
       (aes-xor-de checksum
                   (concat Mm (substring pad b))))
-    (aes-128-triple-de D)
+    (aes-ocb-triple-de D)
     (let ((T (aes-Cipher (aes-xor D checksum) keys Nb)))
       (if (< 0 (length header))
           (setq T (aes-xor T (aes-pmac header keys Nb))))
@@ -842,7 +833,7 @@ files.")
 
 (defun aes-exec-passws-hooks (path)
   "Run the functions in the hook `aes-path-passwd-hook'.
-PATH is a fils system path, that is passed as argument to each function.
+PATH is a file system path, that is passed as argument to each function.
 Return a string resulting from the first hook that returns a non-nil value.
 Return nil, if every function in the hook returns nil."
   (run-hook-with-args-until-success 'aes-path-passwd-hook path))
@@ -982,9 +973,9 @@ Changing the window-size during the process will cause problems."
            curwin
            (iv (make-string 16 0))
            (key (make-string 16 0))
-           (extract (let ((r (1+ (logb (or (and (= localmax 1) 1)
-                                           (1- localmax))))))
-                      (lsh (aes-enlarge-to-multiple-num r 8) -3)))
+           (extract
+            (lsh (aes-enlarge-to-multiple-num
+                  (1+ (logb (or (and (= localmax 1) 1) (1- localmax)))) 8) -3))
            (maxfac (/ (expt 256 extract) localmax))
            (maxborder (* localmax maxfac))
            (needed-entropy-bits (aes-enlarge-to-multiple-num
@@ -1159,7 +1150,8 @@ Use NB as blocksite If it is nil, then use the value of `aes-Nb'.
 Use base64-encoding if NONB64 is nil, and binary representation otherwise. It
 has a default value of nil.
 Generate a weak random initialization vector.
-Get the key for encryption from the function `aes-key-from-passwd'."
+Get the key for encryption from the function `aes-key-from-passwd'.
+Return t, if a buffer was encrypted and otherwise the encrypted string."
   (unless Nb (setq Nb aes-Nb))
   (unless Nk (setq Nk aes-Nk))
   (let* ((buffer (or (get-buffer bos) (and (bufferp bos) bos)))
@@ -1168,8 +1160,6 @@ Get the key for encryption from the function `aes-key-from-passwd'."
     (if (not (or (and (not type) (setq type aes-default-method))
                  (member type '("OCB" "CBC"))))
         (message "Wrong type.")
-      (if (and (equal type "OCB") (not (= Nb 4)))
-          (setq Nb 4)) ;; other values are not implemented.
       (let* ((group (or (and buffer (or (aes-exec-passws-hooks
                                          (buffer-file-name buffer))
                                         (buffer-name buffer)))
@@ -1216,7 +1206,8 @@ Get the key for encryption from the function `aes-key-from-passwd'."
   "Decrypt buffer or string BOS (V 1.2).
 BOS is a buffer, a buffer name or a string.
 If BOS is a string matching the name of a buffer, then this buffer is used.
-Get the key for encryption by the function `aes-key-from-passwd'."
+Get the key for encryption by the function `aes-key-from-passwd'.
+Return t, if a buffer was decrypted and otherwise the decrypted string."
   (let* ((buffer (or (and (bufferp bos) bos) (get-buffer bos)))
          (sp (if buffer (with-current-buffer bos
                           (buffer-substring-no-properties
@@ -1363,6 +1354,7 @@ decrypts the whole file and not just the region indicated in X."
 (provide 'aes)
 
 ;;;; Footer
+
 ;; Local Variables:
 ;; mode: outline-minor
 ;; comment-column:0
