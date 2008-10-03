@@ -20,7 +20,7 @@
 ;; Author: Markus Sauermann <mhoram@gmx.de>
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.4
+;; Version: 0.5
 ;; Revision: $Id$
 ;; Keywords: data tools
 
@@ -36,6 +36,7 @@
 ;;     documentation cleanup
 ;; 0.4 Increased ocb performance and adjusted possible blocksizes
 ;;     Replaced aes-ocb-max-default-length by aes-default-method
+;; 0.5 ?
 
 ;;; Commentary:
 
@@ -633,7 +634,7 @@ where the most significant byte is at position 0."
       (setq x (lsh x -8)))
     res))
 
-(defun aes-pmac (header keys Nb)
+(defun aes-ocb-pmac (header keys Nb)
   "Calculate the pmac of HEADER using aes encryption.
 NB * 4 denotes the blocksize.
 Return the pmac of the unibyte string HEADER of arbitrary length as unibyte
@@ -704,7 +705,7 @@ ciphertext and the unibyte string P of blocksize length is the hash value."
       (store-substring C pointer (aes-xor Mm (substring pad 0 b)))
       (aes-xor-de checksum (concat Mm (substring pad b))))
     (setq P (aes-Cipher (aes-xor checksum (aes-ocb-triple-de D)) keys Nb))
-    (if (< 0 (length header)) (aes-xor-de P (aes-pmac header keys Nb)))
+    (if (< 0 (length header)) (aes-xor-de P (aes-ocb-pmac header keys Nb)))
     (cons C P)))
 
 (defun aes-ocb-decrypt (header input tag iv keys &optional Nb)
@@ -755,7 +756,7 @@ Otherwise return nil."
     (aes-ocb-triple-de D)
     (let ((T (aes-Cipher (aes-xor D checksum) keys Nb)))
       (if (< 0 (length header))
-          (setq T (aes-xor T (aes-pmac header keys Nb))))
+          (setq T (aes-xor T (aes-ocb-pmac header keys Nb))))
       (if (equal tag
                  (substring T 0 (length tag)))
           M
@@ -1042,7 +1043,7 @@ Changing the window-size during the process will cause problems."
                            (+ aes-entropy-of-mousemovement
                               current-entropy-bits))))
               (if (<= 128 tempentropybits)
-                  ;; now there is enough entropy to gen a random 16 byte string
+                  ;; now there is enough entropy to generate 16 random bytes
                   (progn
                     (setq preres
                           (concat preres
