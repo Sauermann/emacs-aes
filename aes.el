@@ -21,7 +21,8 @@
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
 ;; Version: 0.5
-;; Revision: $Id$
+;; Revision: $Revision$
+;; LastChange: $Date$
 ;; Keywords: data tools
 
 ;;; Change Log:
@@ -36,7 +37,7 @@
 ;;     documentation cleanup
 ;; 0.4 Increased ocb performance and adjusted possible blocksizes
 ;;     Replaced aes-ocb-max-default-length by aes-default-method
-;; 0.5 ?
+;; 0.5 Bugfix caused by wrong passwords
 
 ;;; Commentary:
 
@@ -688,8 +689,8 @@ ciphertext and the unibyte string P of blocksize length is the hash value."
          (pointer 0))
     (while (< pointer border)
       (aes-ocb-double-de D)
-      (setq checksum (aes-xor checksum (substring input pointer
-                                                  (+ pointer blocksize))))
+      (aes-xor-de checksum (substring input pointer
+                                      (+ pointer blocksize)))
       (store-substring C pointer
                        (aes-xor D (aes-Cipher
                                    (aes-xor D (substring
@@ -756,9 +757,8 @@ Otherwise return nil."
     (aes-ocb-triple-de D)
     (let ((T (aes-Cipher (aes-xor D checksum) keys Nb)))
       (if (< 0 (length header))
-          (setq T (aes-xor T (aes-ocb-pmac header keys Nb))))
-      (if (equal tag
-                 (substring T 0 (length tag)))
+          (aes-xor-de T (aes-ocb-pmac header keys Nb)))
+      (if (equal tag (substring T 0 (length tag)))
           M
         nil))))
 
@@ -935,12 +935,16 @@ Otherwise use Emacs internal pseudo random number generator."
   :group 'aes)
 
 (defcustom aes-entropy-of-mousemovement 4
-  "The bit-entropy of a mouse movement event."
+  "The bit-entropy of a mouse movement event.
+Set this to a higher value, to generate more random numbers from
+less user input entropy."
   :type 'integer
   :group 'aes)
 
 (defcustom aes-entropy-of-keyinput 2
-  "The bit-entropy of a keyinput event."
+  "The bit-entropy of a keyinput event.
+Set this to a higher value, to generate the more random numbers
+from less user input entropy."
   :type 'integer
   :group 'aes)
 
@@ -955,8 +959,9 @@ Display an approximation of how much entropy is already generated.
 Changing the window-size during the process will cause problems."
   (unless localmax (setq localmax 256))
   (if (not aes-user-interaction-entropy)
-      (let ((res ()))
-        (dotimes (i len) (setq res (cons (random localmax) res)))
+      (let ((res ()) (i 0))
+        (while (< i len) (setq res (cons (random localmax) res))
+               (setq i (1+ i)))
         res)
     (let* ((chars
             "acbdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@+")
@@ -1024,7 +1029,7 @@ Changing the window-size during the process will cause problems."
                                               tempentropybits))
                      (setq current-entropy-bits
                            (+ aes-entropy-of-keyinput current-entropy-bits))
-                     (setq tempentropy (format "%s%d" tempentropy eve)))
+                     (setq tempentropy (format "%s%d," tempentropy eve)))
                     ((and (consp eve)
                           (eq 'mouse-movement (car eve))
                           (eq curwin (car (car (cdr eve))))
@@ -1104,7 +1109,7 @@ as input for the pseudo randon number generator, if
 ;;;; buffer and string en-/decryption
 
 (defun aes-toggle-representation (s)
-  "Toggle string S between unibyte and multibyte.
+  "Toggle string S between unibyte and multibyte representation.
 Return a new string containing the other representation."
   (let ((mb (multibyte-string-p s)))
     (with-temp-buffer
@@ -1169,8 +1174,11 @@ Return t, if a buffer was encrypted and otherwise the encrypted string."
              (keys (aes-KeyExpansion key Nb))
              (iv (let* ((x (make-string (lsh Nb 2) 0))
                         (aes-user-interaction-entropy nil)
-                        (y (aes-user-entropy (lsh Nb 2) 256)))
-                   (dotimes (i (lsh Nb 2)) (aset x i (car y)) (setq y (cdr y)))
+                        (y (aes-user-entropy (lsh Nb 2) 256))
+                        (i 0)
+                        (border (lsh Nb 2)))
+                   (while (< i border) (aset x i (car y)) (setq y (cdr y))
+                          (setq i (1+ i)))
                    x))
              (multibyte
               (if buffer (if (with-current-buffer buffer
@@ -1250,9 +1258,12 @@ Return t, if a buffer was decrypted and otherwise the decrypted string."
        (if (or (and (equal type "CBC")
                     (not (string-match "\\`\\([0-9]+\\)\n" res)))
                (and (equal type "OCB") (not res)))
-           (message (concat "buffer or string '"
-                            (if (bufferp bos) (buffer-name bos) bos)
-                            "' could not be decrypted."))
+           (progn (message (concat "buffer or string '"
+                                   (if (bufferp bos) (buffer-name bos) bos)
+                                   "' could not be decrypted."))
+                  (if group
+                      (setq aes-plaintext-passwords
+                            (assq-delete-all group aes-plaintext-passwords))))
          (setq len (and (equal type "CBC")
                         (string-to-number (match-string 1 res))))
          (setq res (if (equal type "OCB") res
