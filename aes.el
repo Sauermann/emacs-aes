@@ -829,6 +829,8 @@ Functions, appended to this hook, get one argument: a path of a file to be
 en- or decrypted.
 According to the path the function should return a string, providing
 information about the group of files, or nil otherwise.
+The returned string should begin with two whitespaces, such that it is not
+mixed up with buffer names.
 Using this method it is possible to store the same password, used for multiple
 files.")
 
