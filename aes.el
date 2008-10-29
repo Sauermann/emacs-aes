@@ -597,7 +597,7 @@ The calculation is done in a bit field according to the length of X.
 This is done destructively in the unibyte string X.
 The length of X is 16, 24, 32, 40, 48, 56 or 64 bytes.
 The return value is the result."
-  ;; For a description of the multiplication see [4, Ch 2]
+  ;; For a description of the multiplication see [5, Ch 2]
   (let* ((len (length x))
          (len1 (and (or (member len '(16 24 32 40 48 56 64))
                         (error "%s \"%s\" is not allowed."
@@ -621,7 +621,7 @@ The calculation is done in a bit field according to the length of X.
 X and the return value area unibyte strings of arbitrary length.
 This is done destructively in X.
 Return X."
-  ;; For a description of the multiplication see [4, Ch 2]
+  ;; For a description of the multiplication see [5, Ch 2]
   (aes-xor-de x (aes-ocb-double-de (copy-sequence x))))
 
 (defun aes-num2str (x n)
@@ -641,7 +641,7 @@ NB * 4 denotes the blocksize.
 Return the pmac of the unibyte string HEADER of arbitrary length as unibyte
 string of blocksize length.
 KEYS is the expanded key as defined in `aes-KeyExpansion'."
-  ;; For a description of the pmac see [4, Ch 4]
+  ;; For a description of the pmac see [5, Ch 4]
   (let* ((l (length header))
          (bs (lsh Nb 2))
          (whole-blocks (/ l bs))
@@ -675,7 +675,7 @@ KEYS contains the expanded key as described in `aes-KeyExpansion'.
 IV is a unibyte string of length blocksize containing the initialization vector.
 Return a cons cell (C . P), where C is a unibyte string containing the
 ciphertext and the unibyte string P of blocksize length is the hash value."
-  ;; For a description of the ocb encryption see [4, Ch 5]
+  ;; For a description of the ocb encryption see [5, Ch 5]
   (let* ((D (aes-Cipher iv keys Nb))
          (C (make-string (length input) 0))
          P
@@ -720,7 +720,7 @@ KEYS contains the expanded key as described in `aes-KeyExpansion'.
 IV is a unibyte string of length blocksize containing the initialization vector.
 Return the plaintext as unibte string, if the hashvalue fits.
 Otherwise return nil."
-  ;; For a description of the ocb decryption see [4, Ch 6]
+  ;; For a description of the ocb decryption see [5, Ch 6]
   (unless Nb (setq Nb 4))
   (let* ((D (aes-Cipher iv keys Nb))
          (M (make-string (length input) 0))
