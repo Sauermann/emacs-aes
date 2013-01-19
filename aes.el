@@ -186,48 +186,52 @@ position K of the result as '((A . B) . (C . D))."
 
 ;;;; Multiplication
 
-(defun aes-mul-pre (a b)
-  "Multiply the bytes A and B in GF(2^8) and return their product."
-  ;; For a description, see [1, Ch 2.1.2] or [2. Ch 4.2.1]
-  (let ((p 0)
-        (c 0))
-    (while (< c 8)
-      (if (= 1 (logand b 1))
-          (setq p (logxor a p)))
-      (if (prog1 (= #x80 (logand a #x80))
-            (setq a (logand #xff (lsh a 1))))
-          (setq a (logxor a #x1b)))
-      (setq b (lsh b -1))
-      (setq c (1+ c)))
-    p))
+(eval-when-compile
+  (defun aes-mul-pre (a b)
+    "Multiply the bytes A and B in GF(2^8) and return their product."
+    ;; For a description, see [1, Ch 2.1.2] or [2. Ch 4.2.1]
+    (let ((p 0)
+          (c 0))
+      (while (< c 8)
+        (if (= 1 (logand b 1))
+            (setq p (logxor a p)))
+        (if (prog1 (= #x80 (logand a #x80))
+              (setq a (logand #xff (lsh a 1))))
+            (setq a (logxor a #x1b)))
+        (setq b (lsh b -1))
+        (setq c (1+ c)))
+      p))
 
-(let ((l (make-string 256 0))
-      (mt (make-vector #xf 0))
-      (x 0)
-      i res)
-  (while (< x #xf)
-    (aset mt x (make-string 256 0))
-    (setq x (1+ x)))
-  (setq x 1)
-  (while (< x 256)
-    (setq i x)
-    (while (< i 256)
-      (setq res (aes-mul-pre i x))
-      (if (= #x01 res) (progn (aset l x i) (aset l i x)))
-      (and (< x #xf) (aset (aref mt x) i res)
-           (and (< i #xf) (aset (aref mt i) x res)))
-      (setq i (1+ i)))
-    (setq x (1+ x)))
-  (defconst aes-inv-table l
-    "This variable contains the GF(2^8) inverting lookup table.")
-  ;; The following 6 tables are used during the time critical
-  ;; functions `aes-SubShiftMixKeys' and `aes-InvSubShiftMixKeys'
-  (defconst aes-l2 (aref mt #x02))
-  (defconst aes-l3 (aref mt #x03))
-  (defconst aes-l9 (aref mt #x09))
-  (defconst aes-lb (aref mt #x0b))
-  (defconst aes-ld (aref mt #x0d))
-  (defconst aes-le (aref mt #x0e)))
+  (defvar aes-l (make-string 256 0))
+  (defvar aes-mt (make-vector #xf 0))
+
+  (let ((x 0)
+        i res)
+    (while (< x #xf)
+      (aset aes-mt x (make-string 256 0))
+      (setq x (1+ x)))
+    (setq x 1)
+    (while (< x 256)
+      (setq i x)
+      (while (< i 256)
+        (setq res (aes-mul-pre i x))
+        (if (= #x01 res) (progn (aset aes-l x i) (aset aes-l i x)))
+        (and (< x #xf) (aset (aref aes-mt x) i res)
+             (and (< i #xf) (aset (aref aes-mt i) x res)))
+        (setq i (1+ i)))
+      (setq x (1+ x)))))
+
+(defconst aes-inv-table (eval-when-compile aes-l)
+  "This variable contains the GF(2^8) inverting lookup table.")
+
+;; The following 6 tables are used during the time critical
+;; functions `aes-SubShiftMixKeys' and `aes-InvSubShiftMixKeys'
+(defconst aes-l2 (eval-when-compile (aref aes-mt #x02)))
+(defconst aes-l3 (eval-when-compile (aref aes-mt #x03)))
+(defconst aes-l9 (eval-when-compile (aref aes-mt #x09)))
+(defconst aes-lb (eval-when-compile (aref aes-mt #x0b)))
+(defconst aes-ld (eval-when-compile (aref aes-mt #x0d)))
+(defconst aes-le (eval-when-compile (aref aes-mt #x0e)))
 
 ;;;; SubBytes Transformation
 
@@ -1273,10 +1277,10 @@ Return t, if a buffer was decrypted and otherwise the decrypted string."
          (if buffer (with-current-buffer bos
                       (erase-buffer) (set-buffer-multibyte nil)
                       (insert res)
-                      (if multibyte (set-buffer-multibyte t))
                       (setq buffer-file-coding-system
                             (car (find-coding-systems-region
                                   (point-min) (point-max))))
+                      (if multibyte (set-buffer-multibyte t))
                       t)
            (if multibyte (aes-toggle-representation res) res)))))))
 
