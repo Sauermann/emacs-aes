@@ -20,7 +20,7 @@
 ;; Author: Markus Sauermann <mhoram@gmx.de>
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.5
+;; Version: 0.5-BETA-1
 ;; Keywords: data tools
 
 ;;; Change Log:
@@ -35,7 +35,9 @@
 ;;     documentation cleanup
 ;; 0.4 Increased ocb performance and adjusted possible blocksizes
 ;;     Replaced aes-ocb-max-default-length by aes-default-method
-;; 0.5 Bugfix caused by wrong passwords
+;; 0.5 Bugfix in the case of a false password
+;;     Improved performance of some functions
+;;     Added support for multiple padding formats
 ;;     Updated documentation
 
 ;;; Commentary:
@@ -95,8 +97,9 @@
 ;;   with round-key-addition are implemented in the functions
 ;;   `aes-SubShiftMixKeys' and `aes-InvSubShiftMixKeys' for encryption
 ;;   and decryption respectively.
-;; - CBC mode is implemented straightforward, using a 0-padding to the full
-;;   blocklength.  The IV is appended to and saved with the ciphertext.
+;; - CBC mode is implemented straightforward, using a Zero or PKCS#7
+;;   [7] padding.  The IV is appended to and saved with the
+;;   ciphertext.
 ;; - OCB mode made the implementation of a pmac, based on AES,
 ;;   necessary, but the further details were straightforward.  The IV
 ;;   is appended to the ciphertext.  During decryption the created
@@ -111,15 +114,22 @@
 
 ;; Known Bugs / TODO:
 ;; - Encrypted buffers are Auto-Saved unencrypted.
-;; - This implementation is not resistant against DPA attacks.
+;; - This implementation is not resistant against DPA attacks [8].
 ;; - `aes-auto-decrypt' is not completely compliant to Emacs standards.
+;; - Handle CBC and OCB in two different functions instead of the
+;;   single function `aes-encrypt-buffer-or-string'.
+;; - `aes-enlarge-to-multiple-num' is a really bad function name.
+;; - don't handle padding in `aes-cbc-encrypt'.
 
+;; References:
 ;; [1] http://csrc.nist.gov/archive/aes/rijndael/Rijndael-ammended.pdf
 ;; [2] http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf
 ;; [3] http://www.openssl.org/
 ;; [4] http://en.wikipedia.org/wiki/Block_cipher_modes_of_operation
 ;; [5] http://tools.ietf.org/html/draft-krovetz-ocb-00
 ;; [6] http://www.cs.ucdavis.edu/~rogaway/ocb/license.htm
+;; [7] http://tools.ietf.org/html/rfc5652#section-6.3
+;; [8] http://en.wikipedia.org/wiki/Differential_power_analysis
 
 ;;; Code:
 
@@ -165,14 +175,31 @@ X and Y are objects of the form '((A . B) . (C . D))"
   (setcar (cdr x) (logxor (car (cdr x)) (car (cdr y))))
   (setcdr (cdr x) (logxor (cdr (cdr x)) (cdr (cdr y)))))
 
-(defun aes-enlarge-to-multiple (v bs)
-  "Enlarge unibyte string V to a multiple of number BS and pad with Zeros.
-Return a new unibyte string containing the result.  V is not changed"
+(defun aes-pad (v bs &optional padding)
+  "Pad a string V to blocksize BS.
+PADDING specifies the padding format. Currently only Zero-Padding
+and PKCS#7 are supported. Meaningful values for PADDING are
+'Zero' and 'PKCS#7'.  Other values of PADDING default to
+Zero-Padding."
+  (if (and padding (equal padding "PKCS#7"))
+      (aes-pkcs7-pad v bs)
+    (aes-zero-pad v bs)))
+
+(defun aes-zero-pad (v bs)
+  "Apply a Zero-Padding to the unibyte string V to blocksize BS.
+Append Zeros to the string until the lengt is a multiple of BS.
+Return a new unibyte string containing the result.  V is not changed."
   (concat v (make-string (mod (- (string-bytes v)) bs) 0)))
 
 (defun aes-enlarge-to-multiple-num (n bs)
   "Return the smallest multiple of BS, not smaller than N."
   (+ n (mod (- n) bs) 0))
+
+(defun aes-pkcs7-pad (v bs)
+  "Apply a PKCS#7-Padding to the unibyte string V to blocksize BS.
+Return a new unibyte string containing the result.  V is not changed."
+  (let ((pad (- bs (mod (string-bytes v) bs))))
+    (concat v (make-string pad pad))))
 
 (defun aes-str-to-b (str)
   "Convert the unibyte string STR to a list-representation.
@@ -362,7 +389,7 @@ than 12."
 
 ;;;; Combined Single Round Transformation
 
-(defsubst aes-SubShiftMixKeys (state keys)
+(defsubst aes-SubShiftMixKeys (state copy keys)
   "Apply one round of the aes encryption destructively to the string STATE.
 KEYS is a list containing a part of the expanded key schedule.  See
 `aes-KeyExpansion' for how KEYS looks like.
@@ -373,8 +400,7 @@ AddRoundKey of one aes round are applied to STATE.
 The length of the unibyte string STATE is a multiple of 4 and larger than 12."
   ;; For a description of MixColumns see [1, Ch 4.2.3] or [2, Ch 5.1.3]
   ;; For a description of AddRoundKey see [1, Ch 4.2.4] or [2, Ch 5.1.4]
-  (let* ((copy (copy-sequence state))
-         (x4 0)
+  (let* ((x4 0)
          (Nb4 (length state))
          s0 s1 s2 s3 keyA)
     (while (< x4 Nb4)
@@ -394,15 +420,14 @@ The length of the unibyte string STATE is a multiple of 4 and larger than 12."
       (set 'keys (cdr keys))
       (set 'x4 (+ x4 4)))))
 
-(defsubst aes-InvSubShiftMixKeys (state keys)
+(defsubst aes-InvSubShiftMixKeys (state copy keys)
   "Apply the 4 inverted transformations destructively to STATE.
 See `aes-SubShiftMixKeys' for additional information.
 Note that the part of the key espansion KEYS is in the reverse order than it was
 in `aes-SubShiftMixKeys'."
   ;; For a description of InvMixColumns see [1, Ch 4.2.3] or [2, Ch 5.3.3]
   ;; For a description of InvAddRoundKey see [1, Ch 4.2.4] or [2, Ch 5.3.4]
-  (let* ((copy (copy-sequence state))
-         (Nb4 (length state))
+  (let* ((Nb4 (length state))
          (x4 (- Nb4 4))
          s0 s1 s2 s3 keyA)
     (while (<= 0 x4)
@@ -526,12 +551,14 @@ NB is the number of 32-bit words in PLAIN.  NR is the number of rounds.
 The length of KEYS is (1 + NR) * NB."
   ;; For a description of the AES cipher see [1, Ch 4.4] or [2, Ch 5.1]
   (let* ((state (make-string (lsh Nb 2) 0))
+         (copy (make-string (lsh Nb 2) 0))
          (r 1))
     (unless Nr (setq Nr (+ (max Nb (- (/ (length keys) Nb) 7)) 6)))
     (store-substring state 0 plain)
     (aes-AddRoundKey state keys)
     (while (< r Nr)
-      (aes-SubShiftMixKeys state (setq keys (nthcdr Nb keys)))
+      (aes-SubShiftMixKeys
+       state (store-substring copy 0 state) (setq keys (nthcdr Nb keys)))
       (setq r (1+ r)))
     (aes-SubBytes state)
     (aes-ShiftRows state)
@@ -546,31 +573,33 @@ NB is the number of 32-bit words in CIPHER.  NR is the number of rounds.
 The length of KEYS is (1 + NR) * NB."
   ;; For a description of the inverted AES cipher see [1, Ch 5.3] or [2, Ch 5.3]
   (let* ((state (make-string (lsh Nb 2) 0))
+         (copy (make-string (lsh Nb 2) 0))
          (r (or Nr (+ (max Nb (- (/ (length keys) Nb) 7)) 6))))
     (store-substring state 0 cipher)
     (aes-InvAddRoundKey state keys)
     (aes-InvShiftRows state)
     (aes-InvSubBytes state)
     (while (< 1 r)
-      (aes-InvSubShiftMixKeys state (setq keys (nthcdr Nb keys)))
+      (aes-InvSubShiftMixKeys
+       state (store-substring copy 0 state) (setq keys (nthcdr Nb keys)))
       (setq r (1- r)))
     (aes-InvAddRoundKey state (nthcdr Nb keys))
     state))
 
 ;;;; Cipher-Block Chaining
 
-(defun aes-cbc-encrypt (plain iv keys Nb)
+(defun aes-cbc-encrypt (plain iv keys Nb &optional padding)
   "Encrypt the string PLAIN by the cbc method using aes for encryption.
 Return a new unibyte string containing the result and dont change PLAIN.
 Use the unibyte string IV as initialization vector and KEYS as the complete key
 expansion as defined in `aes-SubShiftMixKeys'.
 The length of IV must be the blocksize NB * 4.
-If the length of the unibyte string PLAIN is not a multiple of the
-blocksize, then append to PLAIN as many zeros as are needed to get a
-complete blocksize."
+PADDING specifies the used padding format according to the
+specification in `aes-pad'"
   ;; For a description of the CBC mode see [4]
+  ;; For a description of PKCS#7 Padding see [7]
   (let* ((Nb4 (lsh Nb 2))
-         (res (aes-enlarge-to-multiple plain Nb4))
+         (res (aes-pad plain Nb4 padding))
          (len (length res))
          (p 0))
     (while (< p len)
@@ -587,7 +616,9 @@ Use the unibyte string IV as initialization vector and KEYS as the complete key
 expansion as defined in `aes-InvSubShiftMixKeys'.
 The length of IV must be the blocksize NB * 4.
 The length of the unibyte strings C and the result are identical and a
-multiple of the blocksize."
+multiple of the blocksize.
+In contrast to `aes-cbc-encrypt' this function does not handle
+padding removal."
   ;; For a description of the CBC mode see [4]
   (let* ((Nb4 (lsh Nb 2))
          (len (length c))
@@ -902,7 +933,7 @@ length NK * 4."
                        nil
                        'aes-idle-clear-plaintext-keys)))))
       (setq passwd p))
-    (setq passwd (aes-enlarge-to-multiple passwd (lsh Nk 2)))
+    (setq passwd (aes-zero-pad passwd (lsh Nk 2)))
     (setq passwdkeys
           (aes-KeyExpansion
            (aes-str-to-b (substring passwd 0 (lsh Nk 2))) Nk))
