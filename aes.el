@@ -20,7 +20,7 @@
 ;; Author: Markus Sauermann <mhoram@gmx.de>
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.5-BETA-1
+;; Version: 0.5beta1
 ;; Keywords: data tools
 
 ;;; Change Log:
