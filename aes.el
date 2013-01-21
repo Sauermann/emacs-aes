@@ -2,43 +2,25 @@
 
 ;; Copyright (C) 2008, 2009, 2013 Markus Sauermann
 
-;; This program is free software; you can redistribute it and/or
+;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
-;; published by the Free Software Foundation; either version 3 of
-;; the License, or (at your option) any later version.
+;; published by the Free Software Foundation, either version 3 of the
+;; License, or (at your option) any later version.
 
-;; This program is distributed in the hope that it will be
-;; useful, but WITHOUT ANY WARRANTY; without even the implied
-;; warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-;; PURPOSE.  See the GNU General Public License for more details.
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
 
-;; You should have received a copy of the GNU General Public
-;; License along with this program; if not, write to the Free
-;; Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
-;; Boston, MA 02110-1301 USA
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see
+;; <http://www.gnu.org/licenses/>.
 
 ;; Author: Markus Sauermann <mhoram@gmx.de>
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.5beta1
+;; Version: 0.5
 ;; Keywords: data tools
-
-;;; Change Log:
-
-;; 0.1 initial working unpublished version
-;; 0.2 performance enhancements:
-;;     - keys are now represented as lists
-;;     - general optimizations
-;;     documentation written
-;;     code cleanup
-;; 0.3 Bugfix in password generation
-;;     documentation cleanup
-;; 0.4 Increased ocb performance and adjusted possible blocksizes
-;;     Replaced aes-ocb-max-default-length by aes-default-method
-;; 0.5 Bugfix in the case of a false password
-;;     Improved performance of some functions
-;;     Added support for multiple padding formats
-;;     Updated documentation
 
 ;;; Commentary:
 

@@ -1,0 +1,14 @@
+0.1 initial working unpublished version
+0.2 performance enhancements:
+    - keys are now represented as lists
+    - general optimizations
+    documentation written
+    code cleanup
+0.3 Bugfix in password generation
+    documentation cleanup
+0.4 Increased ocb performance and adjusted possible blocksizes
+    Replaced aes-ocb-max-default-length by aes-default-method
+0.5 Bugfix in the case of a false password
+    Improved performance of some functions
+    Added support for multiple padding formats
+    Updated documentation
