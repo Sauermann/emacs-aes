@@ -1348,9 +1348,7 @@ Preserve modification status of buffer during decryption."
         (let ((mod-flag (buffer-modified-p)))
           (aes-decrypt-buffer-or-string (current-buffer))
           (set-buffer-modified-p mod-flag)
-          (add-hook (if (<= emacs-major-version 21)
-                        'local-write-file-hooks
-                      'write-file-functions)
+          (add-hook 'write-file-functions
                     'aes-encrypt-current-buffer-check nil t))
       (aes-encrypt-buffer-or-string (current-buffer)))
     (goto-char p)))
@@ -1359,9 +1357,7 @@ Preserve modification status of buffer during decryption."
   "Remove saving-hook from current buffer.
 This allows saving a previously encrypted buffer in plaintext."
   (interactive)
-  (remove-hook (if (<= emacs-major-version 21)
-                   'local-write-file-hooks
-                 'write-file-functions)
+  (remove-hook 'write-file-functions
                'aes-encrypt-current-buffer-check t)
   (message "Encryption Hook removed."))
 
@@ -1374,11 +1370,8 @@ decrypts the whole file and not just the region indicated in X."
         (set (make-local-variable 'auto-save-default) nil)
         (aes-decrypt-buffer-or-string (current-buffer))
         (set-buffer-modified-p mod-flag)
-        (if (<= emacs-major-version 21)
-            (add-hook 'local-write-file-hooks
-                      'aes-encrypt-current-buffer-check nil t)
-          (add-hook 'write-file-functions
-                    'aes-encrypt-current-buffer-check nil t))))
+        (add-hook 'write-file-functions
+                  'aes-encrypt-current-buffer-check nil t)))
   (goto-char (point-min))
   (point-max))
 
