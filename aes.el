@@ -2,25 +2,14 @@
 
 ;; Copyright (C) 2008, 2009, 2013 Markus Sauermann
 
-;; This program is free software: you can redistribute it and/or
-;; modify it under the terms of the GNU General Public License as
-;; published by the Free Software Foundation, either version 3 of the
-;; License, or (at your option) any later version.
-
-;; This program is distributed in the hope that it will be useful, but
-;; WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-;; General Public License for more details.
-
-;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see
-;; <http://www.gnu.org/licenses/>.
-
 ;; Author: Markus Sauermann <mhoram@gmx.de>
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
 ;; Version: 0.5
-;; Keywords: data tools
+;; Keywords: data, tools
+;; URL: https://github.com/gaddhi/aes
+
+;; This file is not part of GNU Emacs.
 
 ;;; Commentary:
 
@@ -94,24 +83,41 @@
 
 ;; The version of the internal storage format of encrypted data is 1.2.
 
-;; Known Bugs / TODO:
-;; - Encrypted buffers are Auto-Saved unencrypted.
+;; The latest version of this package is available via MELPA [9] and
+;; Marmalade [10].
+
+;; Known Bugs / Limitations / TODO:
 ;; - This implementation is not resistant against DPA attacks [8].
 ;; - `aes-auto-decrypt' is not completely compliant to Emacs standards.
 ;; - Handle CBC and OCB in two different functions instead of the
 ;;   single function `aes-encrypt-buffer-or-string'.
-;; - `aes-enlarge-to-multiple-num' is a really bad function name.
 ;; - don't handle padding in `aes-cbc-encrypt'.
 
 ;; References:
-;; [1] http://csrc.nist.gov/archive/aes/rijndael/Rijndael-ammended.pdf
-;; [2] http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf
-;; [3] http://www.openssl.org/
-;; [4] http://en.wikipedia.org/wiki/Block_cipher_modes_of_operation
-;; [5] http://tools.ietf.org/html/draft-krovetz-ocb-00
-;; [6] http://www.cs.ucdavis.edu/~rogaway/ocb/license.htm
-;; [7] http://tools.ietf.org/html/rfc5652#section-6.3
-;; [8] http://en.wikipedia.org/wiki/Differential_power_analysis
+;;  [1] http://csrc.nist.gov/archive/aes/rijndael/Rijndael-ammended.pdf
+;;  [2] http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf
+;;  [3] http://www.openssl.org/
+;;  [4] http://en.wikipedia.org/wiki/Block_cipher_modes_of_operation
+;;  [5] http://tools.ietf.org/html/draft-krovetz-ocb-00
+;;  [6] http://www.cs.ucdavis.edu/~rogaway/ocb/license.htm
+;;  [7] http://tools.ietf.org/html/rfc5652#section-6.3
+;;  [8] http://en.wikipedia.org/wiki/Differential_power_analysis
+;;  [9] http://melpa.milkbox.ne/
+;; [10] http://marmalade-repo.org/
+
+;; This program is free software: you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the
+;; License, or (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see
+;; <http://www.gnu.org/licenses/>.
 
 ;;; Code:
 
@@ -1363,6 +1369,7 @@ WARNING: not compliant to `format-alist' in the sense that the function
 decrypts the whole file and not just the region indicated in X."
   (if (aes-is-encrypted)
       (let ((mod-flag (buffer-modified-p)))
+        (set (make-local-variable 'auto-save-default) nil)
         (aes-decrypt-buffer-or-string (current-buffer))
         (set-buffer-modified-p mod-flag)
         (if (<= emacs-major-version 21)
