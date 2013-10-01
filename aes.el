@@ -56,8 +56,8 @@
 ;; For details see [3].  This leads to an 8-bit design for this
 ;; implementation.  So the following fitting implementation is used
 ;; here.
-;; - Multiplication and inverting in GF(2^8) are implemented as a
-;; - table lookups.
+;; - Multiplication and inverting in GF(2^8) are implemented as table
+;;   lookups.
 ;; - The state is implemented as a string of length 4 * Nb.
 ;; - Plaintext and ciphertext are implemented as unibyte strings.
 ;; - The expanded key is implemented as a list of length 4 * Nb * (1 +
@@ -165,8 +165,8 @@ X and Y are objects of the form '((A . B) . (C . D))"
 
 (defun aes-pad (v bs &optional padding)
   "Pad a string V to blocksize BS.
-PADDING specifies the padding format. Currently only Zero-Padding
-and PKCS#7 are supported. Meaningful values for PADDING are
+PADDING specifies the padding format.  Currently only Zero-Padding
+and PKCS#7 are supported.  Meaningful values for PADDING are
 'Zero' and 'PKCS#7'.  Other values of PADDING default to
 Zero-Padding."
   (if (and padding (equal padding "PKCS#7"))
@@ -179,7 +179,7 @@ Append Zeros to the string until the lengt is a multiple of BS.
 Return a new unibyte string containing the result.  V is not changed."
   (concat v (make-string (mod (- (string-bytes v)) bs) 0)))
 
-(defun aes-enlarge-to-multiple-num (n bs)
+(defun aes-enlarge-to-multiple-num (bs n)
   "Return the smallest multiple of BS, not smaller than N."
   (+ n (mod (- n) bs) 0))
 
@@ -379,6 +379,7 @@ than 12."
 
 (defsubst aes-SubShiftMixKeys (state copy keys)
   "Apply one round of the aes encryption destructively to the string STATE.
+COPY msut contain a duplicate of STATE, but they must not be `eq'.
 KEYS is a list containing a part of the expanded key schedule.  See
 `aes-KeyExpansion' for how KEYS looks like.
 The relevant keys for this round are stored in the first Nb elements of KEYS,
@@ -410,6 +411,7 @@ The length of the unibyte string STATE is a multiple of 4 and larger than 12."
 
 (defsubst aes-InvSubShiftMixKeys (state copy keys)
   "Apply the 4 inverted transformations destructively to STATE.
+COPY msut contain a duplicate of STATE, but they must not be `eq'.
 See `aes-SubShiftMixKeys' for additional information.
 Note that the part of the key espansion KEYS is in the reverse order than it was
 in `aes-SubShiftMixKeys'."
@@ -630,7 +632,7 @@ The return value is the result."
   ;; For a description of the multiplication see [5, Ch 2]
   (let* ((len (length x))
          (len1 (and (or (member len '(16 24 32 40 48 56 64))
-                        (error "%s \"%s\" is not allowed."
+                        (error "%s \"%s\" is not allowed"
                                "The specified blocksize of string" x))
                     (- len 2)))
          (c (* (aref [135  135 1061 27 4107 2115 293] (- (lsh len -3) 2))
@@ -667,10 +669,10 @@ where the most significant byte is at position 0."
 
 (defun aes-ocb-pmac (header keys Nb)
   "Calculate the pmac of HEADER using aes encryption.
+KEYS is the expanded key as defined in `aes-KeyExpansion'.
 NB * 4 denotes the blocksize.
 Return the pmac of the unibyte string HEADER of arbitrary length as unibyte
-string of blocksize length.
-KEYS is the expanded key as defined in `aes-KeyExpansion'."
+string of blocksize length."
   ;; For a description of the pmac see [5, Ch 4]
   (let* ((l (length header))
          (bs (lsh Nb 2))
@@ -696,13 +698,13 @@ KEYS is the expanded key as defined in `aes-KeyExpansion'."
                                    (make-string (- bs b 1) 0))))
     (aes-Cipher (aes-xor D checksum) keys Nb)))
 
-(defun aes-ocb-encrypt (header input iv keys Nb)
+(defun aes-ocb-encrypt (input header iv keys Nb)
   "Encrypt the string INPUT using OCB.
 Additionally generate a pmac of HEADER and INPUT.
 HEADER and INPUT are unibyte strings of arbitrary length.
-NB describes the blocksize which is NB * 4 bytes.
-KEYS contains the expanded key as described in `aes-KeyExpansion'.
 IV is a unibyte string of length blocksize containing the initialization vector.
+KEYS contains the expanded key as described in `aes-KeyExpansion'.
+NB describes the blocksize which is NB * 4 bytes.
 Return a cons cell (C . P), where C is a unibyte string containing the
 ciphertext and the unibyte string P of blocksize length is the hash value."
   ;; For a description of the ocb encryption see [5, Ch 5]
@@ -739,15 +741,15 @@ ciphertext and the unibyte string P of blocksize length is the hash value."
     (if (< 0 (length header)) (aes-xor-de P (aes-ocb-pmac header keys Nb)))
     (cons C P)))
 
-(defun aes-ocb-decrypt (header input tag iv keys &optional Nb)
+(defun aes-ocb-decrypt (input header tag iv keys &optional Nb)
   "Decrypt the string INPUT using OCB.
 Additionally verify the pmac hash value of HEADER and INPUT with TAG.
 HEADER and INPUT are unibyte strings of arbitrary length.
-NB describes the blocksize which is NB * 4 bytes.
 TAG is a unibyte string of blocksize length containing the hash value generated
 during encryption.
-KEYS contains the expanded key as described in `aes-KeyExpansion'.
 IV is a unibyte string of length blocksize containing the initialization vector.
+KEYS contains the expanded key as described in `aes-KeyExpansion'.
+NB describes the blocksize which is NB * 4 bytes.  A default value of 4 is used.
 Return the plaintext as unibte string, if the hashvalue fits.
 Otherwise return nil."
   ;; For a description of the ocb decryption see [5, Ch 6]
@@ -871,17 +873,17 @@ Return a string resulting from the first hook that returns a non-nil value.
 Return nil, if every function in the hook returns nil."
   (run-hook-with-args-until-success 'aes-path-passwd-hook path))
 
-(defun aes-key-from-passwd (Nk usage type-or-file)
+(defun aes-key-from-passwd (usage type-or-file Nk)
   "Return a key, generated from a password.
 This is done by encrypting the password by a key generated from the password
 using a constant initialization vector.
 USAGE must be a string either \"encryption\" or \"decryption\" denoting the
 usage of the password.
-TYPE-OR-FILE is a string describing what the password is used for. If the key is
-used for a string, TYPE-OR-FILE should be \"string\". If the key is used for a
-group of files (by using `aes-path-passwd-hook'), it should be a string denoting
-the group. Otherwise the key is used for a file not in a group and in this case
-it should be the filename.
+TYPE-OR-FILE is a string describing what the password is used for.  If the key
+is used for a string, TYPE-OR-FILE should be \"string\". If the key is used for
+a group of files (by using `aes-path-passwd-hook'), it should be a string
+denoting the group.  Otherwise the key is used for a file not in a group and in
+this case it should be the filename.
 If `aes-use-plaintext-keys' is nil and `aes-disable-global-plaintext-keys' is
 non-nil, then use `aes-plaintext-passwords' for storing and reading passwords.
 Passwords are only stored there, if TYPE-OR-FILE denotes a group of files.
@@ -1013,13 +1015,13 @@ Changing the window-size during the process will cause problems."
            (key (make-string 16 0))
            (extract
             (lsh (aes-enlarge-to-multiple-num
-                  (1+ (logb (or (and (= localmax 1) 1) (1- localmax)))) 8) -3))
+                  8 (1+ (logb (or (and (= localmax 1) 1) (1- localmax))))) -3))
            (maxfac (/ (expt 256 extract) localmax))
            (maxborder (* localmax maxfac))
            (needed-entropy-bits (aes-enlarge-to-multiple-num
+                                 128
                                  (* len extract 8 (/ (expt 256 extract)
-                                                     (+ 0.0 maxborder)))
-                                 128))
+                                                     (+ 0.0 maxborder)))))
            (current-entropy-bits 0)
            (percentage-ready 0)
            keys)
@@ -1202,7 +1204,7 @@ Return t, if a buffer was encrypted and otherwise the encrypted string."
                                          (buffer-file-name buffer))
                                         (buffer-name buffer)))
                         "string"))
-             (key (aes-str-to-b (aes-key-from-passwd Nk "encryption" group)))
+             (key (aes-str-to-b (aes-key-from-passwd "encryption" group Nk)))
              (keys (aes-KeyExpansion key Nb))
              (iv (let* ((x (make-string (lsh Nb 2) 0))
                         (aes-user-interaction-entropy nil)
@@ -1229,7 +1231,7 @@ Return t, if a buffer was encrypted and otherwise the encrypted string."
                       (concat (number-to-string (length unibyte-string))
                               "\n" unibyte-string)))
              (enc (if (equal type "OCB")
-                      (let* ((res (aes-ocb-encrypt header plain iv keys Nb)))
+                      (let* ((res (aes-ocb-encrypt plain header iv keys Nb)))
                         (concat iv (cdr res) (car res)))
                     (concat iv (aes-cbc-encrypt plain iv keys Nb)))))
         (if nonb64 nil
@@ -1281,11 +1283,11 @@ Return t, if a buffer was decrypted and otherwise the decrypted string."
                                         (buffer-file-name buffer))
                                        (buffer-name buffer)))
                        "string"))
-            (key (aes-str-to-b (aes-key-from-passwd Nk "decryption" group)))
+            (key (aes-str-to-b (aes-key-from-passwd "decryption" group Nk)))
             (keys (aes-KeyExpansion key Nb))
             (res (if (equal type "CBC")
                      (aes-cbc-decrypt enc iv (nreverse keys) Nb)
-                   (aes-ocb-decrypt header enc tag iv keys Nb)))
+                   (aes-ocb-decrypt enc header tag iv keys Nb)))
             len)
        (if (or (and (equal type "CBC")
                     (not (string-match "\\`\\([0-9]+\\)\n" res)))
