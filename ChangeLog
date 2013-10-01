@@ -12,3 +12,13 @@
     Improved performance of some functions
     Added support for multiple padding formats
     Updated documentation
+0.6 Changed order of parameter in a few functions
+    - aes-enlarge-to-multiple-num
+    - aes-ocb-encrypt
+    - aes-ocb-decrypt
+    - aes-key-from-passwd
+    Disabled autosaving of encrypted files in unencrypted form
+    Made documentation compatible with checkdoc
+    Updated documentation
+    Removed support for Emacs 21
+    Changed Emacs Version recommendations

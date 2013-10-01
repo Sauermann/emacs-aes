@@ -40,8 +40,11 @@
 ;; For customizing this library, there is the customization group aes
 ;; in the applications group.
 
-;; Emacs versions 22 to 23 are recommended.  It should work with
-;; version 21 and 24, but there were no tests.
+;; Version 24.3 should not be used, because it contains a bug [11]
+;; that causes passwords to be shown in the minibuffer.
+;; Versions 24.1 and 24.2 were not tested.
+;; Versions 22 to 23 are recommended.
+;; Version 21 and below are no longer supported.
 
 ;; This implementation allows additionally to the AES specification
 ;; blocklengths of 24 and 32 bytes.
@@ -104,6 +107,7 @@
 ;;  [8] http://en.wikipedia.org/wiki/Differential_power_analysis
 ;;  [9] http://melpa.milkbox.ne/
 ;; [10] http://marmalade-repo.org/
+;; [11] http://debbugs.gnu.org/cgi/bugreport.cgi?bug=15501
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
