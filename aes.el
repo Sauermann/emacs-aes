@@ -17,9 +17,9 @@
 ;; by using Cipher-block chaining [4] and Offset Codebook Mode [5].
 ;; Both use Rijndael [1] as encryption algorithm, which is implemented
 ;; natively in Emacs.  Rijndael is a superset of the AES algorithm
-;; [2].  For patent issues about OCB see [6], which allows this
-;; distribution.  Additionally this library provides a password
-;; generator based on AES and random user input.
+;; [2].  Additionally this library provides a password generator based
+;; on AES and random user input.  For patent issues about OCB see [6],
+;; which allows this distribution.
 
 ;; Config file
 ;; Insert "(require 'aes)" into your local .emacs file to load this
@@ -40,8 +40,9 @@
 ;; For customizing this library, there is the customization group aes
 ;; in the applications group.
 
-;; Version 24.3 should not be used, because it contains a bug [11]
-;; that causes passwords to be shown in the minibuffer.
+;; Version 24.3 should only be used, if the patch described in [11]
+;; is applied, because there is a bug that causes passwords to be
+;; shown in the minibuffer.
 ;; Versions 24.1 and 24.2 were not tested.
 ;; Versions 22 to 23 are recommended.
 ;; Version 21 and below are no longer supported.
@@ -71,8 +72,8 @@
 ;;   with round-key-addition are implemented in the functions
 ;;   `aes-SubShiftMixKeys' and `aes-InvSubShiftMixKeys' for encryption
 ;;   and decryption respectively.
-;; - CBC mode is implemented straightforward, using a Zero or PKCS#7
-;;   [7] padding.  The IV is appended to and saved with the
+;; - CBC mode is implemented straightforward, using a Zero [12] or
+;;   PKCS#7 [7] padding.  The IV is appended to and saved with the
 ;;   ciphertext.
 ;; - OCB mode made the implementation of a pmac, based on AES,
 ;;   necessary, but the further details were straightforward.  The IV
@@ -80,9 +81,8 @@
 ;;   hash-value is checked.
 ;; - the function `aes-key-from-passwd' generates an AES key from an
 ;;   user input string (password).
-;; - Further a facility is provided to generate random passwords,
-;;   based on random user input like mousemovement, time and keyinput.
-;; - The ciphertext is usually converted to a base-64 encoded string.
+;; - Further `aes-insert-password' generates random passwords, based
+;;   on random user input like mousemovement, time and keyinput.
 
 ;; The version of the internal storage format of encrypted data is 1.2.
 
@@ -95,6 +95,8 @@
 ;; - Handle CBC and OCB in two different functions instead of the
 ;;   single function `aes-encrypt-buffer-or-string'.
 ;; - don't handle padding in `aes-cbc-encrypt'.
+;; - review recent-keys
+;; - refactor `aes-user-entropy'
 
 ;; References:
 ;;  [1] http://csrc.nist.gov/archive/aes/rijndael/Rijndael-ammended.pdf
@@ -108,6 +110,7 @@
 ;;  [9] http://melpa.milkbox.ne/
 ;; [10] http://marmalade-repo.org/
 ;; [11] http://debbugs.gnu.org/cgi/bugreport.cgi?bug=15501
+;; [12] http://en.wikipedia.org/wiki/Padding_(cryptography)#Zero_padding
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -173,23 +176,27 @@ PADDING specifies the padding format.  Currently only Zero-Padding
 and PKCS#7 are supported.  Meaningful values for PADDING are
 'Zero' and 'PKCS#7'.  Other values of PADDING default to
 Zero-Padding."
-  (if (and padding (equal padding "PKCS#7"))
-      (aes-pkcs7-pad v bs)
-    (aes-zero-pad v bs)))
+  (cond ((and padding (equal padding "PKCS#7"))
+         (aes-pkcs7-pad v bs))
+        ((and padding (equal padding "Zero"))
+         (aes-zero-pad v bs))
+        (t (aes-zero-pad v bs))))
 
 (defun aes-zero-pad (v bs)
   "Apply a Zero-Padding to the unibyte string V to blocksize BS.
 Append Zeros to the string until the lengt is a multiple of BS.
 Return a new unibyte string containing the result.  V is not changed."
+  ;; For a description, see [12]
   (concat v (make-string (mod (- (string-bytes v)) bs) 0)))
 
-(defun aes-enlarge-to-multiple-num (bs n)
-  "Return the smallest multiple of BS, not smaller than N."
-  (+ n (mod (- n) bs) 0))
+(defun aes-enlarge-to-multiple-num (blocksize n)
+  "Return the smallest multiple of BLOCKSIZE, not smaller than N."
+  (+ n (mod (- n) blocksize) 0))
 
 (defun aes-pkcs7-pad (v bs)
   "Apply a PKCS#7-Padding to the unibyte string V to blocksize BS.
 Return a new unibyte string containing the result.  V is not changed."
+  ;; For a description, see [7]
   (let ((pad (- bs (mod (string-bytes v) bs))))
     (concat v (make-string pad pad))))
 
@@ -213,25 +220,25 @@ position K of the result as '((A . B) . (C . D))."
 ;;;; Multiplication
 
 (eval-when-compile
-  (defun aes-mul-pre (a b)
-    "Multiply the bytes A and B in GF(2^8) and return their product."
-    ;; For a description, see [1, Ch 2.1.2] or [2. Ch 4.2.1]
-    (let ((p 0)
-          (c 0))
-      (while (< c 8)
-        (if (= 1 (logand b 1))
-            (setq p (logxor a p)))
-        (if (prog1 (= #x80 (logand a #x80))
-              (setq a (logand #xff (lsh a 1))))
-            (setq a (logxor a #x1b)))
-        (setq b (lsh b -1))
-        (setq c (1+ c)))
-      p))
-
   (defvar aes-l (make-string 256 0))
   (defvar aes-mt (make-vector #xf 0))
 
-  (let ((x 0)
+  (let ((aes-mul-pre
+         (lambda (a b)
+           "Multiply the bytes A and B in GF(2^8) and return their product."
+           ;; For a description, see [1, Ch 2.1.2] or [2. Ch 4.2.1]
+           (let ((p 0)
+                 (c 0))
+             (while (< c 8)
+               (if (= 1 (logand b 1))
+                   (setq p (logxor a p)))
+               (if (prog1 (= #x80 (logand a #x80))
+                     (setq a (logand #xff (lsh a 1))))
+                   (setq a (logxor a #x1b)))
+               (setq b (lsh b -1))
+               (setq c (1+ c)))
+             p)))
+        (x 0)
         i res)
     (while (< x #xf)
       (aset aes-mt x (make-string 256 0))
@@ -240,7 +247,7 @@ position K of the result as '((A . B) . (C . D))."
     (while (< x 256)
       (setq i x)
       (while (< i 256)
-        (setq res (aes-mul-pre i x))
+        (setq res (funcall aes-mul-pre i x))
         (if (= #x01 res) (progn (aset aes-l x i) (aset aes-l i x)))
         (and (< x #xf) (aset (aref aes-mt x) i res)
              (and (< i #xf) (aset (aref aes-mt i) x res)))
@@ -417,7 +424,7 @@ The length of the unibyte string STATE is a multiple of 4 and larger than 12."
   "Apply the 4 inverted transformations destructively to STATE.
 COPY msut contain a duplicate of STATE, but they must not be `eq'.
 See `aes-SubShiftMixKeys' for additional information.
-Note that the part of the key espansion KEYS is in the reverse order than it was
+Note that the part of the key expansion KEYS is in the reverse order than it was
 in `aes-SubShiftMixKeys'."
   ;; For a description of InvMixColumns see [1, Ch 4.2.3] or [2, Ch 5.3.3]
   ;; For a description of InvAddRoundKey see [1, Ch 4.2.4] or [2, Ch 5.3.4]
@@ -449,7 +456,8 @@ in `aes-SubShiftMixKeys'."
 
 (defun aes-RotWord (x)
   "Rotate X by one byte.
-Append the first byte to the end."
+X is of the form '((A . B) . (C . D))
+Append the first byte to the end and return '((B . C) . (D . A))."
   (let ((te (car (car x))))
     (setcar (car x) (cdr (car x)))
     (setcdr (car x) (car (cdr x)))
@@ -591,7 +599,6 @@ The length of IV must be the blocksize NB * 4.
 PADDING specifies the used padding format according to the
 specification in `aes-pad'"
   ;; For a description of the CBC mode see [4]
-  ;; For a description of PKCS#7 Padding see [7]
   (let* ((Nb4 (lsh Nb 2))
          (res (aes-pad plain Nb4 padding))
          (len (length res))
@@ -986,19 +993,19 @@ from less user input entropy."
   :type 'integer
   :group 'aes)
 
-(defun aes-user-entropy (len &optional localmax)
+(defun aes-user-entropy (len &optional border)
   "Return a list of random numbers.
 The length of the list is LEN and each integer in the list is in the range from
-0 inclusive to LOCALMAX exclusive.
+0 inclusive to BORDER exclusive.
 Read user entropy from keyboard and mouse to generate the random number
 sequence, if `aes-user-interaction-entropy' is non-nil; otherwise use the
 elisp function `random'.
 Display an approximation of how much entropy is already generated.
 Changing the window-size during the process will cause problems."
-  (unless localmax (setq localmax 256))
+  (unless border (setq border 256))
   (if (not aes-user-interaction-entropy)
       (let ((res ()) (i 0))
-        (while (< i len) (setq res (cons (random localmax) res))
+        (while (< i len) (setq res (cons (random border) res))
                (setq i (1+ i)))
         res)
     (let* ((chars
@@ -1019,9 +1026,9 @@ Changing the window-size during the process will cause problems."
            (key (make-string 16 0))
            (extract
             (lsh (aes-enlarge-to-multiple-num
-                  8 (1+ (logb (or (and (= localmax 1) 1) (1- localmax))))) -3))
-           (maxfac (/ (expt 256 extract) localmax))
-           (maxborder (* localmax maxfac))
+                  8 (1+ (logb (or (and (= border 1) 1) (1- border))))) -3))
+           (maxfac (/ (expt 256 extract) border))
+           (maxborder (* border maxfac))
            (needed-entropy-bits (aes-enlarge-to-multiple-num
                                  128
                                  (* len extract 8 (/ (expt 256 extract)
@@ -1084,7 +1091,10 @@ Changing the window-size during the process will cause problems."
                                               tempentropybits))
                      (setq current-entropy-bits
                            (+ aes-entropy-of-mousemovement
-                              current-entropy-bits))))
+                              current-entropy-bits)))
+                    ((and (consp eve)
+                          (eq 'mouse-movement (car eve))))
+                    (t (message (format "Warning: case not handled in aes.el: %s" eve))))
               (if (<= 128 tempentropybits)
                   ;; now there is enough entropy to generate 16 random bytes
                   (progn
@@ -1381,8 +1391,7 @@ decrypts the whole file and not just the region indicated in X."
 
 (defun aes-enable-auto-decryption ()
   "Enable auto decryption via `format-alist'."
-  (if (assoc 'aes format-alist)
-      (setq format-alist (assq-delete-all 'aes format-alist)))
+  (aes-disable-auto-decryption)
   (setq format-alist
         (cons (list 'aes
                     "AES-encrypted format"
@@ -1392,6 +1401,11 @@ decrypts the whole file and not just the region indicated in X."
                     t
                     nil)
               format-alist)))
+
+(defun aes-disable-auto-decryption ()
+  "Disable auto decryption via `format-alist'."
+  (if (assoc 'aes format-alist)
+      (setq format-alist (assq-delete-all 'aes format-alist))))
 
 ;;;; Provide
 

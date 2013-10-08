@@ -20,5 +20,6 @@
     Disabled autosaving of encrypted files in unencrypted form
     Made documentation compatible with checkdoc
     Updated documentation
+    Removed compile warning
     Removed support for Emacs 21
     Changed Emacs Version recommendations
