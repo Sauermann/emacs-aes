@@ -97,6 +97,7 @@
 ;; - don't handle padding in `aes-cbc-encrypt'.
 ;; - review recent-keys
 ;; - refactor `aes-user-entropy'
+;; - test random number generator
 
 ;; References:
 ;;  [1] http://csrc.nist.gov/archive/aes/rijndael/Rijndael-ammended.pdf
@@ -145,8 +146,7 @@ Y must not be shorter than X."
 (defun aes-xor-de (x y)
   "Calculate X and Y bytewise xored destructively in X.
 X and Y are unibyte strings.  Y must not be shorter than X.
-The result is stored in X.
-The return value is X."
+The return value is the new value that is stored in X."
   (let* ((l (length x))
          (i 0))
     (while (< i l)
@@ -1054,7 +1054,7 @@ Changing the window-size during the process will cause problems."
           ;; fill window with random characters
           (while (< i p)
             (insert-char (aref chars (random 64)) 1)
-            (if (and (< i (1- p)) (< 0 i) (= (% i w) 0)) (insert "\n"))
+            (if (and (= (% i w) 0) (< i (1- p)) (< 0 i)) (insert "\n"))
             (setq i (1+ i)))
           ;; display buffer
           (switch-to-buffer (current-buffer))
@@ -1094,7 +1094,7 @@ Changing the window-size during the process will cause problems."
                               current-entropy-bits)))
                     ((and (consp eve)
                           (eq 'mouse-movement (car eve))))
-                    (t (message (format "Warning: case not handled in aes.el: %s" eve))))
+                    (t (message (format "Warning: ignoring event in aes.el: %s" eve))))
               (if (<= 128 tempentropybits)
                   ;; now there is enough entropy to generate 16 random bytes
                   (progn
@@ -1117,10 +1117,10 @@ Changing the window-size during the process will cause problems."
                     (setq tempentropy ""))))))
         res))))
 
-(defun aes-generate-password (length &optional typ)
+(defun aes-generate-password (length &optional type)
   "Return a password of length LENGTH.
-TYP is a string consisting only of a subset of the characters defined in
-the car values of `aes-password-char-groups'."
+TYPE is a string consisting only of a subset of the characters
+defined in the car values of `aes-password-char-groups'."
   (let* ((cs (mapcar 'car aes-password-char-groups))
          (case-fold-search nil)
          (chars
@@ -1130,8 +1130,8 @@ the car values of `aes-password-char-groups'."
                res
                (concat
                 res
-                (if typ
-                    (and (string-match (regexp-quote (char-to-string c)) typ)
+                (if type
+                    (and (string-match (regexp-quote (char-to-string c)) type)
                          (elt (assoc c aes-password-char-groups) 2))
                   (or (and (cadr (assoc c aes-password-char-groups))
                            (elt (assoc c aes-password-char-groups) 2))
