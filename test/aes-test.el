@@ -40,7 +40,7 @@
   (should (equal (aes-xor "abc" "AB ") "  C")))
 
 (ert-deftest aes-ert-xor-de ()
-  "test aes-xor"
+  "test aes-xor-de"
   (let ((s1 "ab")
         (s2 "abc"))
     (should (eq (aes-xor-de s1 "AB") s1))

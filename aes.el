@@ -62,7 +62,7 @@
 ;; here.
 ;; - Multiplication and inverting in GF(2^8) are implemented as table
 ;;   lookups.
-;; - The state is implemented as a string of length 4 * Nb.
+;; - The state is implemented as a unibyte string of length 4 * Nb.
 ;; - Plaintext and ciphertext are implemented as unibyte strings.
 ;; - The expanded key is implemented as a list of length 4 * Nb * (1 +
 ;;   Nr) with entries '((A . B) . (C . D)), where A, B, C and D are
@@ -95,7 +95,6 @@
 ;; - Handle CBC and OCB in two different functions instead of the
 ;;   single function `aes-encrypt-buffer-or-string'.
 ;; - don't handle padding in `aes-cbc-encrypt'.
-;; - review recent-keys
 ;; - refactor `aes-user-entropy'
 ;; - test random number generator
 
@@ -756,8 +755,8 @@ ciphertext and the unibyte string P of blocksize length is the hash value."
   "Decrypt the string INPUT using OCB.
 Additionally verify the pmac hash value of HEADER and INPUT with TAG.
 HEADER and INPUT are unibyte strings of arbitrary length.
-TAG is a unibyte string of blocksize length containing the hash value generated
-during encryption.
+TAG is a unibyte string of blocksize length, that is compared to
+the hashvalue generated during decryption.
 IV is a unibyte string of length blocksize containing the initialization vector.
 KEYS contains the expanded key as described in `aes-KeyExpansion'.
 NB describes the blocksize which is NB * 4 bytes.  A default value of 4 is used.
@@ -1011,8 +1010,7 @@ Changing the window-size during the process will cause problems."
     (let* ((chars
             "acbdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@+")
            (ch (format "%s%s%s"
-                       (or (and (boundp 'recent-keys) recent-keys)
-                           (recent-keys))
+                       (recent-keys)
                        command-history
                        (current-time)))
            (chmd5b (md5 ch))
