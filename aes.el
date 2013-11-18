@@ -86,8 +86,10 @@
 
 ;; The version of the internal storage format of encrypted data is 1.2.
 
-;; The latest version of this package is available via MELPA [9] and
-;; Marmalade [10].
+;; The latest version of this package is also available via MELPA [9]
+;; and Marmalade [10].
+
+;; There are two [13] other [14] Elisp implementations of AES.
 
 ;; Known Bugs / Limitations / TODO:
 ;; - This implementation is not resistant against DPA attacks [8].
@@ -111,6 +113,8 @@
 ;; [10] http://marmalade-repo.org/
 ;; [11] http://debbugs.gnu.org/cgi/bugreport.cgi?bug=15501
 ;; [12] http://en.wikipedia.org/wiki/Padding_(cryptography)#Zero_padding
+;; [13] https://github.com/mhayashi1120/Emacs-kaesar/
+;; [14] http://josefsson.org/aes/rijndael.el
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -183,7 +187,7 @@ Zero-Padding."
 
 (defun aes-zero-pad (v bs)
   "Apply a Zero-Padding to the unibyte string V to blocksize BS.
-Append Zeros to the string until the lengt is a multiple of BS.
+Append Zeros to the string until the length is a multiple of BS.
 Return a new unibyte string containing the result.  V is not changed."
   ;; For a description, see [12]
   (concat v (make-string (mod (- (string-bytes v)) bs) 0)))
@@ -544,6 +548,7 @@ KEYS is a part of the key expansion as defined in `aes-InvSubShiftMixKeys'."
 
 ;;;; AES Cipher
 
+;;;###autoload
 (defun aes-Cipher (plain keys Nb &optional Nr)
   "Perform a complete aes encryption of the unibyte string PLAIN.
 Return a new string containing the encrypted string PLAIN.
@@ -566,6 +571,7 @@ The length of KEYS is (1 + NR) * NB."
     (aes-AddRoundKey state (nthcdr Nb keys))
     state))
 
+;;;###autoload
 (defun aes-InvCipher (cipher keys Nb &optional Nr)
   "Perform a complete aes decryption of the unibyte string CIPHER.
 Return a new string containing the decrypted string CIPHER.
