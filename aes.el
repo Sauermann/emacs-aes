@@ -1,11 +1,11 @@
 ;;; aes.el --- Implementation of AES
 
-;; Copyright (C) 2008, 2009, 2013 Markus Sauermann
+;; Copyright (C) 2008, 2009, 2013, 2014 Markus Sauermann
 
 ;; Author: Markus Sauermann <mhoram@gmx.de>
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.5
+;; Version: 0.6
 ;; Keywords: data, tools
 ;; URL: https://github.com/gaddhi/aes
 
