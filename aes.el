@@ -84,7 +84,10 @@
 ;; - Further `aes-insert-password' generates random passwords, based
 ;;   on random user input like mousemovement, time and keyinput.
 
-;; The version of the internal storage format of encrypted data is 1.2.
+;; The version of the internal storage format of encrypted data is
+;; 1.3.  Version 1.2 will be supported until at least December
+;; 2015. But it is advised to load and save all encrypted files using
+;; this version
 
 ;; The latest version of this package is also available via MELPA [9]
 ;; and Marmalade [10].
@@ -889,7 +892,7 @@ Return a string resulting from the first hook that returns a non-nil value.
 Return nil, if every function in the hook returns nil."
   (run-hook-with-args-until-success 'aes-path-passwd-hook path))
 
-(defun aes-key-from-passwd (usage type-or-file Nk)
+(defun aes-key-from-passwd (usage type-or-file Nk &optional v12)
   "Return a key, generated from a password.
 This is done by encrypting the password by a key generated from the password
 using a constant initialization vector.
@@ -907,7 +910,8 @@ Query the password from the user if it is not available via
 `aes-plaintext-passwords'. This implementation does not test the quality of the
 password.
 Return the key generated from the password. The key is a string of
-length NK * 4."
+length NK * 4.
+If V12 is non-nil, use the old key generation method."
   (if (not (member usage '("encryption" "decryption")))
       (error "Wrong argument in aes-key-from-passwd: \"%S\"" usage))
   (let* (passwd passwdkeys (p ""))
@@ -918,7 +922,8 @@ length NK * 4."
       (while (equal p "")
         (setq p (read-passwd
                  (concat usage " Password for " type-or-file ": ")
-                 (equal "encryption" usage))))
+                 (equal "encryption" usage)))
+        (if (and p (not v12)) (setq p (string-as-unibyte p))))
       (if (and (not aes-always-ask-for-passwords)
                aes-enable-plaintext-password-storage
                (not (get-buffer type-or-file))
@@ -1204,7 +1209,7 @@ For OCB only 4 is supported."
   :group 'aes)
 
 (defun aes-encrypt-buffer-or-string (bos &optional password type Nk Nb nonb64)
-  "Encrypt buffer or string BOS (V 1.2).
+  "Encrypt buffer or string BOS (V 1.3).
 If BOS is a string matching the name of a buffer, then this buffer is used.
 Use method TYPE.  (\"OCB\" or \"CBC\"), If it is not specified, then decide
 according to `aes-default-method'.
@@ -1249,7 +1254,7 @@ Return t, if a buffer was encrypted and otherwise the encrypted string."
                     (if (equal multibyte "M") (set-buffer-multibyte nil))
                     (buffer-substring-no-properties (point-min) (point-max)))
                 (if (equal multibyte "M") (aes-toggle-representation bos) bos)))
-             (header (format "aes-encrypted V 1.2-%s-%s-%d-%d-%s\n"
+             (header (format "aes-encrypted V 1.3-%s-%s-%d-%d-%s\n"
                              type (if nonb64 "N" "B") Nb Nk multibyte))
              (plain (if (equal type "OCB") unibyte-string
                       (concat (number-to-string (length unibyte-string))
@@ -1270,7 +1275,7 @@ Return t, if a buffer was encrypted and otherwise the encrypted string."
           enc)))))
 
 (defun aes-decrypt-buffer-or-string (bos &optional password)
-  "Decrypt buffer or string BOS (V 1.2).
+  "Decrypt buffer or string BOS (V 1.2 and V 1.3).
 BOS is a buffer, a buffer name or a string.
 If BOS is a string matching the name of a buffer, then this buffer is used.
 Get the key for encryption by the function `aes-key-from-passwd'.
@@ -1283,18 +1288,19 @@ Return t, if a buffer was decrypted and otherwise the decrypted string."
     (and
      (or (string-match
           (concat
-           "aes-encrypted V 1.2-\\(CBC\\|OCB\\)-\\([BN]\\)-"
+           "aes-encrypted V 1.\\([23]\\)-\\(CBC\\|OCB\\)-\\([BN]\\)-"
            "\\([0-9]+\\)-\\([0-9]+\\)-\\([MU]\\)\n") sp)
          (and (message "buffer or string '%s' is not properly encrypted." bos)
               nil))
-     (let* ((type (match-string 1 sp))
-            (b64 (equal "B" (match-string 2 sp)))
-            (Nb (string-to-number (match-string 3 sp)))
+     (let* ((version (match-string 1 sp))
+            (type (match-string 2 sp))
+            (b64 (equal "B" (match-string 3 sp)))
+            (Nb (string-to-number (match-string 4 sp)))
             (blocksize (lsh Nb 2))
-            (Nk (string-to-number (match-string 4 sp)))
+            (Nk (string-to-number (match-string 5 sp)))
             (Nr (+ (max Nk Nb) 6))
-            (um (match-string 5 sp))
-            (multibyte (equal "M" (match-string 5 sp)))
+            (um (match-string 6 sp))
+            (multibyte (equal "M" (match-string 6 sp)))
             (header (match-string 0 sp))
             (res1 (substring sp (match-end 0)))
             (res2 (if b64 (base64-decode-string res1) res1))
@@ -1308,7 +1314,8 @@ Return t, if a buffer was decrypted and otherwise the decrypted string."
                                        (buffer-name buffer)))
                        "string"))
             (key (aes-str-to-b (if password (aes-password-to-key password Nk)
-                                 (aes-key-from-passwd "decryption" group Nk))))
+                                 (aes-key-from-passwd "decryption" group Nk
+                                                      (equal version "2")))))
             (keys (aes-KeyExpansion key Nb))
             (res (if (equal type "CBC")
                      (aes-cbc-decrypt enc iv (nreverse keys) Nb)
