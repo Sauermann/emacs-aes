@@ -1,11 +1,11 @@
 ;;; aes.el --- Implementation of AES
 
-;; Copyright (C) 2008, 2009, 2013, 2014 Markus Sauermann
+;; Copyright (C) 2008, 2009, 2013, 2014, 2015 Markus Sauermann
 
 ;; Author: Markus Sauermann <mhoram@gmx.de>
 ;; Maintainer: Markus Sauermann <mhoram@gmx.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.6
+;; Version: 0.7
 ;; Keywords: data, tools
 ;; URL: https://github.com/gaddhi/aes
 
@@ -40,6 +40,7 @@
 ;; For customizing this library, there is the customization group aes
 ;; in the applications group.
 
+;; Version 24.4 is recommended
 ;; Version 24.3 should only be used, if the patch described in [11]
 ;; is applied, because there is a bug that causes passwords to be
 ;; shown in the minibuffer.
@@ -1211,6 +1212,8 @@ For OCB only 4 is supported."
 (defun aes-encrypt-buffer-or-string (bos &optional password type Nk Nb nonb64)
   "Encrypt buffer or string BOS (V 1.3).
 If BOS is a string matching the name of a buffer, then this buffer is used.
+Get the key for encryption from the function
+`aes-key-from-passwd' or via the specified PASSWORD.
 Use method TYPE.  (\"OCB\" or \"CBC\"), If it is not specified, then decide
 according to `aes-default-method'.
 Use NK as keysize. If it is nil, then use the value of `aes-Nk'.
@@ -1218,7 +1221,6 @@ Use NB as blocksite If it is nil, then use the value of `aes-Nb'.
 Use base64-encoding if NONB64 is nil, and binary representation otherwise. It
 has a default value of nil.
 Generate a weak random initialization vector.
-Get the key for encryption from the function `aes-key-from-passwd'.
 Return t, if a buffer was encrypted and otherwise the encrypted string."
   (unless Nb (setq Nb aes-Nb))
   (unless Nk (setq Nk aes-Nk))
@@ -1278,7 +1280,8 @@ Return t, if a buffer was encrypted and otherwise the encrypted string."
   "Decrypt buffer or string BOS (V 1.2 and V 1.3).
 BOS is a buffer, a buffer name or a string.
 If BOS is a string matching the name of a buffer, then this buffer is used.
-Get the key for encryption by the function `aes-key-from-passwd'.
+Get the key for encryption from the function
+`aes-key-from-passwd' or via the specified PASSWORD.
 Return t, if a buffer was decrypted and otherwise the decrypted string."
   (let* ((buffer (or (and (bufferp bos) bos) (get-buffer bos)))
          (sp (if buffer (with-current-buffer bos

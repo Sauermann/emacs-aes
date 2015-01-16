@@ -25,3 +25,6 @@
     Changed Emacs Version recommendations
 0.7 Move generation of a key from a password to a separate function
     Allow usage of external password for buffer-en/de-cryption.
+    Bugfix for uni-multibyte problem.
+    Pushed Save-Format from V1.2 to V1.3
+    Updated Documentation
