@@ -939,12 +939,17 @@ length NK * 4."
                        nil
                        'aes-idle-clear-plaintext-keys)))))
       (setq passwd p))
-    (setq passwd (aes-zero-pad passwd (lsh Nk 2)))
-    (setq passwdkeys
-          (aes-KeyExpansion
-           (aes-str-to-b (substring passwd 0 (lsh Nk 2))) Nk))
-    (substring (aes-cbc-encrypt passwd (make-string (lsh Nk 2) 0) passwdkeys Nk)
-               (- (lsh Nk 2)))))
+    (password-to-key passwd Nk)))
+
+(defun password-to-key (password Nk)
+  "Convert a unibyte string PASSWORD to a key.
+The key is a string of length NK * 4."
+  (let ((passwd (aes-zero-pad password (lsh Nk 2))))
+    (substring
+     (aes-cbc-encrypt passwd (make-string (lsh Nk 2) 0)
+                      (aes-KeyExpansion
+                       (aes-str-to-b (substring passwd 0 (lsh Nk 2))) Nk) Nk)
+     (- (lsh Nk 2)))))
 
 (defcustom aes-password-char-groups
   '((?a t "abcdefghjkmnopqrstuvwxyz") ; downcase letters, i and l excluded
