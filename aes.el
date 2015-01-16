@@ -889,7 +889,7 @@ Return a string resulting from the first hook that returns a non-nil value.
 Return nil, if every function in the hook returns nil."
   (run-hook-with-args-until-success 'aes-path-passwd-hook path))
 
-(defun aes-key-from-passwd (usage type-or-file Nk &optional password)
+(defun aes-key-from-passwd (usage type-or-file Nk)
   "Return a key, generated from a password.
 This is done by encrypting the password by a key generated from the password
 using a constant initialization vector.
@@ -916,9 +916,9 @@ length NK * 4."
              (assoc type-or-file aes-plaintext-passwords))
         (setq passwd (cdr (assoc type-or-file aes-plaintext-passwords)))
       (while (equal p "")
-        (setq p (or password (read-passwd
-                              (concat usage " Password for " type-or-file ": ")
-                              (equal "encryption" usage)))))
+        (setq p (read-passwd
+                 (concat usage " Password for " type-or-file ": ")
+                 (equal "encryption" usage))))
       (if (and (not aes-always-ask-for-passwords)
                aes-enable-plaintext-password-storage
                (not (get-buffer type-or-file))
@@ -939,9 +939,9 @@ length NK * 4."
                        nil
                        'aes-idle-clear-plaintext-keys)))))
       (setq passwd p))
-    (password-to-key passwd Nk)))
+    (aes-password-to-key passwd Nk)))
 
-(defun password-to-key (password Nk)
+(defun aes-password-to-key (password Nk)
   "Convert a unibyte string PASSWORD to a key.
 The key is a string of length NK * 4."
   (let ((passwd (aes-zero-pad password (lsh Nk 2))))
@@ -1203,7 +1203,7 @@ For OCB only 4 is supported."
   :type 'integer
   :group 'aes)
 
-(defun aes-encrypt-buffer-or-string (bos password &optional type Nk Nb nonb64)
+(defun aes-encrypt-buffer-or-string (bos &optional password type Nk Nb nonb64)
   "Encrypt buffer or string BOS (V 1.2).
 If BOS is a string matching the name of a buffer, then this buffer is used.
 Use method TYPE.  (\"OCB\" or \"CBC\"), If it is not specified, then decide
@@ -1227,7 +1227,8 @@ Return t, if a buffer was encrypted and otherwise the encrypted string."
                                          (buffer-file-name buffer))
                                         (buffer-name buffer)))
                         "string"))
-             (key (aes-str-to-b (aes-key-from-passwd "encryption" group Nk password)))
+             (key (aes-str-to-b (if password (aes-password-to-key password Nk)
+                                  (aes-key-from-passwd "encryption" group Nk))))
              (keys (aes-KeyExpansion key Nb))
              (iv (let* ((x (make-string (lsh Nb 2) 0))
                         (aes-user-interaction-entropy nil)
@@ -1268,7 +1269,7 @@ Return t, if a buffer was encrypted and otherwise the encrypted string."
                      t)
           enc)))))
 
-(defun aes-decrypt-buffer-or-string (bos password)
+(defun aes-decrypt-buffer-or-string (bos &optional password)
   "Decrypt buffer or string BOS (V 1.2).
 BOS is a buffer, a buffer name or a string.
 If BOS is a string matching the name of a buffer, then this buffer is used.
@@ -1306,7 +1307,8 @@ Return t, if a buffer was decrypted and otherwise the decrypted string."
                                         (buffer-file-name buffer))
                                        (buffer-name buffer)))
                        "string"))
-            (key (aes-str-to-b (aes-key-from-passwd "decryption" group Nk password)))
+            (key (aes-str-to-b (if password (aes-password-to-key password Nk)
+                                 (aes-key-from-passwd "decryption" group Nk))))
             (keys (aes-KeyExpansion key Nb))
             (res (if (equal type "CBC")
                      (aes-cbc-decrypt enc iv (nreverse keys) Nb)
