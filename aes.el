@@ -948,8 +948,11 @@ If V12 is non-nil, use the old key generation method."
     (aes-password-to-key passwd Nk)))
 
 (defun aes-password-to-key (password Nk)
-  "Convert a unibyte string PASSWORD to a key.
+  "Convert a string PASSWORD to a key.
 The key is a string of length NK * 4."
+  ; take care that the password is unibyte.
+  (if (multibyte-string-p password)
+      (setq password (string-as-unibyte password)))
   (let ((passwd (aes-zero-pad password (lsh Nk 2))))
     (substring
      (aes-cbc-encrypt passwd (make-string (lsh Nk 2) 0)
