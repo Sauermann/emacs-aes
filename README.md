@@ -19,18 +19,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ## Usage
 
-All information about the usage you will find in the commentary
+You will find all information about the usage in the commentary
 section of the file aes.el
 
 
 ## Important Stuff for V 0.7
 
-The format for saving has changed from Version 1.2 to 1.3. Please load
-and save all encrypted files. Loading files stored in format V1.2
-will be removed in one of the next versions.
+The internal format for storing the AES-encrypted files has changed
+from Version 1.2 to 1.3. Please load and save all encrypted
+files. Functinality for loading files stored in format V1.2 will be
+removed in one of the next versions.
 
 
 ## Thanks for your suggestions and support
 
-- Frederico Munoz
+- Frederico Muñoz
 - Zhang Kai Yu
