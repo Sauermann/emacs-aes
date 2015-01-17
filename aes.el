@@ -113,12 +113,12 @@
 ;;  [6] http://www.cs.ucdavis.edu/~rogaway/ocb/license.htm
 ;;  [7] http://tools.ietf.org/html/rfc5652#section-6.3
 ;;  [8] http://en.wikipedia.org/wiki/Differential_power_analysis
-;;  [9] http://melpa.milkbox.ne/
+;;  [9] http://melpa.org/
 ;; [10] http://marmalade-repo.org/
 ;; [11] http://debbugs.gnu.org/cgi/bugreport.cgi?bug=15501
 ;; [12] http://en.wikipedia.org/wiki/Padding_(cryptography)#Zero_padding
 ;; [13] https://github.com/mhayashi1120/Emacs-kaesar/
-;; [14] http://josefsson.org/aes/rijndael.el
+;; [14] http://josefsson.org/aes/
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -1366,12 +1366,14 @@ Return nil."
         nil)))
 
 (defun aes-encrypt-current-buffer (&optional password)
-  "Encrypt current buffer."
+  "Encrypt current buffer.
+If PASSWORD is provides use it for generation of the key."
   (interactive)
   (aes-encrypt-buffer-or-string (current-buffer) password))
 
 (defun aes-decrypt-current-buffer (&optional password)
-  "Decrypt current buffer."
+  "Decrypt current buffer.
+If PASSWORD is provides use it for generation of the key."
   (interactive)
   (aes-decrypt-buffer-or-string (current-buffer) password))
 
