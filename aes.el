@@ -1439,8 +1439,4 @@ decrypts the whole file and not just the region indicated in X."
 
 ;;;; Footer
 
-;; Local Variables:
-;; comment-column:0
-;; End:
-
 ;;; aes.el ends here
