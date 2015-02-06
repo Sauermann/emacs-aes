@@ -2,12 +2,12 @@
 
 ;; Copyright (C) 2008, 2009, 2013, 2014, 2015 Markus Sauermann
 
-;; Author: Markus Sauermann <mhoram@gmx.de>
-;; Maintainer: Markus Sauermann <mhoram@gmx.de>
+;; Author: Markus Sauermann <emacs-aes@sauermann-consulting.de>
+;; Maintainer: Markus Sauermann <emacs-aes@sauermann-consulting.de>
 ;; Created: 15 Feb 2008
 ;; Version: 0.7
 ;; Keywords: data, tools
-;; URL: https://github.com/gaddhi/aes
+;; URL: https://github.com/Sauermann/emacs-aes
 
 ;; This file is not part of GNU Emacs.
 
