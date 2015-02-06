@@ -5,7 +5,7 @@
 ;; Author: Markus Sauermann <emacs-aes@sauermann-consulting.de>
 ;; Maintainer: Markus Sauermann <emacs-aes@sauermann-consulting.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.7
+;; Version: 0.8
 ;; Keywords: data, tools
 ;; URL: https://github.com/Sauermann/emacs-aes
 

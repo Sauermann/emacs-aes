@@ -28,3 +28,5 @@
     Bugfix for uni-multibyte problem.
     Pushed Save-Format from V1.2 to V1.3
     Updated Documentation
+0.8 Adopt to new repository
+    Apply new double-hyphen coding convention of Emacs 24.4
