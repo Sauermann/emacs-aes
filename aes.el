@@ -397,7 +397,7 @@ than 12."
 
 (defsubst aes-SubShiftMixKeys (state copy keys)
   "Apply one round of the aes encryption destructively to the string STATE.
-COPY msut contain a duplicate of STATE, but they must not be `eq'.
+COPY must contain a duplicate of STATE, but they must not be `eq'.
 KEYS is a list containing a part of the expanded key schedule.  See
 `aes-KeyExpansion' for how KEYS looks like.
 The relevant keys for this round are stored in the first Nb elements of KEYS,
