@@ -40,7 +40,7 @@
 ;; For customizing this library, there is the customization group aes
 ;; in the applications group.
 
-;; Version 24.4 is recommended
+;; Version 24.4 and 24.5 are recommended
 ;; Version 24.3 should only be used, if the patch described in [11]
 ;; is applied, because there is a bug that causes passwords to be
 ;; shown in the minibuffer.
