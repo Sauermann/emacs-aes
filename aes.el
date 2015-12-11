@@ -849,7 +849,7 @@ With A the password B can be refered to.")
 (defun aes-clear-plaintext-keys ()
   "Remove all stored plaintext passwords."
   (interactive)
-  (setq aes--plaintext-passwords))
+  (setq aes--plaintext-passwords nil))
 
 (defvar aes-idle-timer-value nil
   "Reference to idle timer.
@@ -861,7 +861,7 @@ all stored plaintext passwords.")
 This function is called, when idle-password-clearing is activated.
 This function also clears the message buffer, as it might contain confidential
 content."
-  (setq aes--plaintext-passwords)
+  (setq aes--plaintext-passwords nil)
   (setq aes-idle-timer-value nil)
   (with-current-buffer "*Messages*"
     (erase-buffer))
@@ -1275,7 +1275,7 @@ Return t, if a buffer was encrypted and otherwise the encrypted string."
                      (erase-buffer)
                      (insert enc)
                      (if aes-discard-undo-after-encryption
-                         (setq buffer-undo-list))
+                         (setq buffer-undo-list nil))
                      t)
           enc)))))
 
