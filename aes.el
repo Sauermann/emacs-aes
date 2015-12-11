@@ -40,13 +40,12 @@
 ;; For customizing this library, there is the customization group aes
 ;; in the applications group.
 
+;; Emacs compatibility:
 ;; Version 24.4 and 24.5 are recommended
 ;; Version 24.3 should only be used, if the patch described in [11]
 ;; is applied, because there is a bug that causes passwords to be
 ;; shown in the minibuffer.
-;; Versions 24.1 and 24.2 were not tested.
-;; Versions 22 to 23 are recommended.
-;; Version 21 and below are no longer supported.
+;; Versions 24.2 and earlier have not been tested in years.
 
 ;; This implementation allows additionally to the AES specification
 ;; blocklengths of 24 and 32 bytes.
