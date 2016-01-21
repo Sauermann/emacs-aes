@@ -30,3 +30,5 @@
     Updated Documentation
 0.8 Adopt to new repository
     Apply new double-hyphen coding convention of Emacs 24.4
+0.9 Show buffer in decrypted form after saving
+    Resolved Emacs 25 Compatibility issues

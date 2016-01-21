@@ -36,3 +36,4 @@ removed in one of the next versions.
 - Frederico Muñoz
 - Zhang Kai Yu
 - Alan Mackenzie
+- danrharms

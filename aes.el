@@ -1356,13 +1356,35 @@ The test is done by looking at the first line of the buffer."
     (goto-char (point-min))
     (looking-at "aes-encrypted V [0-9]+.[0-9]+-.+\n")))
 
+(defvar aes--save-temp-buffer nil
+  "Temporary storage variable for buffer content.")
+
 (defun aes--encrypt-current-buffer-check ()
   "Encrypt current buffer, if it is not encrypted.
 Return nil."
   (if (not (aes-is-encrypted))
       (progn
+        (setq aes--save-temp-buffer (point))
         (aes-encrypt-buffer-or-string (current-buffer))
+        (add-hook 'after-save-hook
+                  'aes--restore-buffer-from-temp-var)
         nil)))
+
+(defun aes--restore-buffer-from-temp-var ()
+  "Restore Buffer content from temp variable."
+  (remove-hook 'after-save-hook
+               'aes--restore-buffer-from-temp-var)
+  (aes-decrypt-current-buffer)
+  (goto-char aes--save-temp-buffer)
+  (setq aes--save-temp-buffer nil)
+;  (erase-buffer)
+;  (insert aes--save-temp-buffer)
+;  (setq buffer-file-coding-system
+;        (car (find-coding-systems-region
+;              (point-min) (point-max))))
+  (set-buffer-modified-p nil)
+;  (setq aes--save-temp-buffer nil)
+  )
 
 (defun aes-encrypt-current-buffer (&optional password)
   "Encrypt current buffer.
