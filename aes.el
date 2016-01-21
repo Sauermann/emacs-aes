@@ -1356,7 +1356,7 @@ The test is done by looking at the first line of the buffer."
     (goto-char (point-min))
     (looking-at "aes-encrypted V [0-9]+.[0-9]+-.+\n")))
 
-(defun aes-encrypt-current-buffer-check ()
+(defun aes--encrypt-current-buffer-check ()
   "Encrypt current buffer, if it is not encrypted.
 Return nil."
   (if (not (aes-is-encrypted))
@@ -1388,7 +1388,7 @@ Preserve modification status of buffer during decryption."
           (aes-decrypt-buffer-or-string (current-buffer))
           (set-buffer-modified-p mod-flag)
           (add-hook 'write-file-functions
-                    'aes-encrypt-current-buffer-check nil t))
+                    'aes--encrypt-current-buffer-check nil t))
       (aes-encrypt-buffer-or-string (current-buffer)))
     (goto-char p)))
 
@@ -1397,7 +1397,7 @@ Preserve modification status of buffer during decryption."
 This allows saving a previously encrypted buffer in plaintext."
   (interactive)
   (remove-hook 'write-file-functions
-               'aes-encrypt-current-buffer-check t)
+               'aes--encrypt-current-buffer-check t)
   (message "Encryption Hook removed."))
 
 (defun aes-auto-decrypt (&rest x)
@@ -1410,7 +1410,8 @@ decrypts the whole file and not just the region indicated in X."
         (aes-decrypt-buffer-or-string (current-buffer))
         (set-buffer-modified-p mod-flag)
         (add-hook 'write-file-functions
-                  'aes-encrypt-current-buffer-check nil t)))
+                  'aes--encrypt-current-buffer-check nil t)
+        ))
   (goto-char (point-min))
   (point-max))
 
