@@ -1,11 +1,11 @@
 ;;; aes.el --- Implementation of AES
 
-;; Copyright (C) 2008, 2009, 2013, 2014, 2015 Markus Sauermann
+;; Copyright (C) 2008, 2009, 2013, 2014, 2015, 2017 Markus Sauermann
 
 ;; Author: Markus Sauermann <emacs-aes@sauermann-consulting.de>
 ;; Maintainer: Markus Sauermann <emacs-aes@sauermann-consulting.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.8
+;; Version: 0.9
 ;; Keywords: data, tools
 ;; URL: https://github.com/Sauermann/emacs-aes
 
@@ -41,6 +41,7 @@
 ;; in the applications group.
 
 ;; Emacs compatibility:
+;; Version 25 is not tested
 ;; Version 24.4 and 24.5 are recommended
 ;; Version 24.3 should only be used, if the patch described in [11]
 ;; is applied, because there is a bug that causes passwords to be
