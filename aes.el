@@ -945,9 +945,11 @@ The key is a string of length NK * 4."
       (setq password (encode-coding-string password 'raw-text)))
   (let ((passwd (aes-zero-pad password (lsh Nk 2))))
     (substring
-     (aes-cbc-encrypt passwd (make-string (lsh Nk 2) 0)
+     (aes-cbc-encrypt passwd
+                      (make-string (lsh Nk 2) 0)
                       (aes-KeyExpansion
-                       (aes--str-to-b (substring passwd 0 (lsh Nk 2))) Nk) Nk)
+                       (aes--str-to-b (substring passwd 0 (lsh Nk 2))) Nk)
+                      Nk)
      (- (lsh Nk 2)))))
 
 (defcustom aes-password-char-groups
@@ -1034,7 +1036,8 @@ Changing the window size during the process will cause problems."
            (key (make-string 16 0))
            (extract
             (lsh (aes--enlarge-to-multiple-num
-                  8 (1+ (logb (or (and (= border 1) 1) (1- border))))) -3))
+                  8 (1+ (logb (or (and (= border 1) 1) (1- border)))))
+                 -3))
            (maxfac (/ (expt 256 extract) border))
            (maxborder (* border maxfac))
            (needed-entropy-bits (aes--enlarge-to-multiple-num
@@ -1283,7 +1286,8 @@ Return t, if a buffer was decrypted and otherwise the decrypted string."
      (or (string-match
           (concat
            "aes-encrypted V 1.\\(3\\)-\\(CBC\\|OCB\\)-\\([BN]\\)-"
-           "\\([0-9]+\\)-\\([0-9]+\\)-\\([MU]\\)\n") sp)
+           "\\([0-9]+\\)-\\([0-9]+\\)-\\([MU]\\)\n")
+          sp)
          (and (message "buffer or string '%s' is not properly encrypted." bos)
               nil))
      (let* (;(version (match-string 1 sp))
