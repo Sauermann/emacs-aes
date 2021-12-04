@@ -8,6 +8,7 @@
 ;; Version: 1.0
 ;; Keywords: data, tools
 ;; URL: https://github.com/Sauermann/emacs-aes
+;; Package-Requires: ((emacs "26.1"))
 
 ;; This file is not part of GNU Emacs.
 
@@ -1015,7 +1016,7 @@ Read user entropy from keyboard and mouse to generate the random number
 sequence, if `aes-user-interaction-entropy' is non-nil; otherwise use the
 elisp function `random'.
 Display an approximation of how much entropy is already generated.
-Changing the window-size during the process will cause problems."
+Changing the `window-size' during the process will cause problems."
   (unless border (setq border 256))
   (if (not aes-user-interaction-entropy)
       (let ((res ()) (i 0))
@@ -1428,8 +1429,7 @@ decrypts the whole file and not just the region indicated in X."
         (aes-decrypt-buffer-or-string (current-buffer))
         (set-buffer-modified-p mod-flag)
         (add-hook 'write-file-functions
-                  'aes--encrypt-current-buffer-check nil t)
-        ))
+                  'aes--encrypt-current-buffer-check nil t)))
   (goto-char (point-min))
   (point-max))
 
@@ -1458,3 +1458,6 @@ decrypts the whole file and not just the region indicated in X."
 ;;;; Footer
 
 ;;; aes.el ends here
+
+;; Local Variables:
+;; lexical-binding: t
