@@ -854,13 +854,9 @@ all stored plaintext passwords.")
 
 (defun aes-idle-clear-plaintext-keys ()
   "Remove all stored plaintext passwords.
-This function is called, when idle-password-clearing is activated.
-This function also clears the message buffer, as it might contain confidential
-content."
+This function is called, when idle-password-clearing is activated."
   (setq aes--plaintext-passwords nil)
   (setq aes-idle-timer-value nil)
-  (with-current-buffer "*Messages*"
-    (erase-buffer))
   (message "AES Passwords cleared."))
 
 (defcustom aes-delete-passwords-after-idle 1
