@@ -917,7 +917,7 @@ If V12 is non-nil, use the old key generation method."
         (setq p (read-passwd
                  (concat usage " Password for " type-or-file ": ")
                  (equal "encryption" usage)))
-        (if (and p (not v12)) (setq p (string-as-unibyte p))))
+        (if (and p (not v12)) (setq p (encode-coding-string p 'raw-text))))
       (if (and (not aes-always-ask-for-passwords)
                aes-enable-plaintext-password-storage
                (not (get-buffer type-or-file))
@@ -945,7 +945,7 @@ If V12 is non-nil, use the old key generation method."
 The key is a string of length NK * 4."
   ; take care that the password is unibyte.
   (if (multibyte-string-p password)
-      (setq password (string-as-unibyte password)))
+      (setq password (encode-coding-string password 'raw-text)))
   (let ((passwd (aes-zero-pad password (lsh Nk 2))))
     (substring
      (aes-cbc-encrypt passwd (make-string (lsh Nk 2) 0)
