@@ -69,7 +69,7 @@
 ;;   with round-key-addition are implemented in the functions
 ;;   `aes-SubShiftMixKeys' and `aes-InvSubShiftMixKeys' for encryption
 ;;   and decryption respectively.
-;; - CBC mode is implemented straightforward, using a Zero [12] or
+;; - CBC mode is implemented straightforward, using a Zero [10] or
 ;;   PKCS#7 [7] padding.  The IV is appended to and saved with the
 ;;   ciphertext.
 ;; - OCB mode made the implementation of a pmac, based on AES,
@@ -86,10 +86,9 @@
 ;; 2015. But it is advised to load and save all encrypted files using
 ;; this version
 
-;; The latest version of this package is also available via MELPA [9]
-;; and Marmalade [10].
+;; The latest version of this package is also available via MELPA [9].
 
-;; There are two [13] other [14] Elisp implementations of AES.
+;; There are two [11] other [12] Elisp implementations of AES.
 
 ;; Known Bugs / Limitations / TODO:
 ;; - This implementation is not resistant against DPA attacks [8].
@@ -101,20 +100,18 @@
 ;; - test random number generator
 
 ;; References:
-;;  [1] http://csrc.nist.gov/archive/aes/rijndael/Rijndael-ammended.pdf
-;;  [2] http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf
-;;  [3] http://www.openssl.org/
-;;  [4] http://en.wikipedia.org/wiki/Block_cipher_modes_of_operation
-;;  [5] http://tools.ietf.org/html/draft-krovetz-ocb-00
-;;  [6] http://www.cs.ucdavis.edu/~rogaway/ocb/license.htm
-;;  [7] http://tools.ietf.org/html/rfc5652#section-6.3
-;;  [8] http://en.wikipedia.org/wiki/Differential_power_analysis
-;;  [9] http://melpa.org/
-;; [10] http://marmalade-repo.org/
-;; [11] http://debbugs.gnu.org/cgi/bugreport.cgi?bug=15501
-;; [12] http://en.wikipedia.org/wiki/Padding_(cryptography)#Zero_padding
-;; [13] https://github.com/mhayashi1120/Emacs-kaesar/
-;; [14] http://josefsson.org/aes/
+;;  [1] https://csrc.nist.gov/csrc/media/projects/cryptographic-standards-and-guidelines/documents/aes-development/rijndael-ammended.pdf
+;;  [2] https://csrc.nist.gov/csrc/media/publications/fips/197/final/documents/fips-197.pdf
+;;  [3] https://www.openssl.org/
+;;  [4] https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation
+;;  [5] https://datatracker.ietf.org/doc/html/draft-krovetz-ocb-00
+;;  [6] https://www.cs.ucdavis.edu/~rogaway/ocb/license.htm
+;;  [7] https://datatracker.ietf.org/doc/html/rfc5652#section-6.3
+;;  [8] https://en.wikipedia.org/wiki/Power_analysis#Differential_power_analysis
+;;  [9] https://melpa.org/
+;; [10] https://en.wikipedia.org/wiki/Padding_(cryptography)#Zero_padding
+;; [11] https://github.com/mhayashi1120/Emacs-kaesar/
+;; [12] https://josefsson.org/aes/
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -189,7 +186,7 @@ Zero-Padding."
   "Apply a Zero-Padding to the unibyte string V to blocksize BS.
 Append Zeros to the string until the length is a multiple of BS.
 Return a new unibyte string containing the result.  V is not changed."
-  ;; For a description, see [12]
+  ;; For a description, see [10]
   (concat v (make-string (mod (- (string-bytes v)) bs) 0)))
 
 (defun aes--enlarge-to-multiple-num (blocksize n)
