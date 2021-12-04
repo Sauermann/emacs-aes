@@ -1414,7 +1414,7 @@ This allows saving a previously encrypted buffer in plaintext."
   "Function for auto decryption used in `format-alist'.
 WARNING: not compliant to `format-alist' in the sense that the function
 decrypts the whole file and not just the region indicated in X."
-  (if x (message "Region is not interpreted."))
+  x ; get rid of unused variable compiler warning
   (if (aes-is-encrypted)
       (let ((mod-flag (buffer-modified-p)))
         (set (make-local-variable 'auto-save-default) nil)
