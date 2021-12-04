@@ -407,11 +407,11 @@ The length of the unibyte string STATE is a multiple of 4 and larger than 12."
          (Nb4 (length state))
          s0 s1 s2 s3 keyA)
     (while (< x4 Nb4)
-      (set 's0 (aref aes--s-boxes-enc (aref copy x4)))
-      (set 's1 (aref aes--s-boxes-enc (aref copy (% (+ x4 1 4) Nb4))))
-      (set 's2 (aref aes--s-boxes-enc (aref copy (% (+ x4 2 8) Nb4))))
-      (set 's3 (aref aes--s-boxes-enc (aref copy (% (+ x4 3 12) Nb4))))
-      (set 'keyA (car keys))
+      (setq s0 (aref aes--s-boxes-enc (aref copy x4)))
+      (setq s1 (aref aes--s-boxes-enc (aref copy (% (+ x4 1 4) Nb4))))
+      (setq s2 (aref aes--s-boxes-enc (aref copy (% (+ x4 2 8) Nb4))))
+      (setq s3 (aref aes--s-boxes-enc (aref copy (% (+ x4 3 12) Nb4))))
+      (setq keyA (car keys))
       (aset state x4 (logxor (aref aes--l2 s0) (aref aes--l3 s1) s2 s3
                              (car (car keyA))))
       (aset state (1+ x4) (logxor s0 (aref aes--l2 s1) (aref aes--l3 s2) s3
@@ -420,8 +420,8 @@ The length of the unibyte string STATE is a multiple of 4 and larger than 12."
                                    (car (cdr keyA))))
       (aset state (+ 3 x4) (logxor (aref aes--l3 s0) s1 s2 (aref aes--l2 s3)
                                    (cdr (cdr keyA))))
-      (set 'keys (cdr keys))
-      (set 'x4 (+ x4 4)))))
+      (setq keys (cdr keys))
+      (setq x4 (+ x4 4)))))
 
 (defsubst aes-InvSubShiftMixKeys (state copy keys)
   "Apply the 4 inverted transformations destructively to STATE.
@@ -435,11 +435,11 @@ in `aes-SubShiftMixKeys'."
          (x4 (- Nb4 4))
          s0 s1 s2 s3 keyA)
     (while (<= 0 x4)
-      (set 'keyA (car keys))
-      (set 's0 (logxor (aref copy x4) (car (car keyA))))
-      (set 's1 (logxor (aref copy (1+ x4)) (cdr (car keyA))))
-      (set 's2 (logxor (aref copy (+ 2 x4)) (car (cdr keyA))))
-      (set 's3 (logxor (aref copy (+ 3 x4)) (cdr (cdr keyA))))
+      (setq keyA (car keys))
+      (setq s0 (logxor (aref copy x4) (car (car keyA))))
+      (setq s1 (logxor (aref copy (1+ x4)) (cdr (car keyA))))
+      (setq s2 (logxor (aref copy (+ 2 x4)) (car (cdr keyA))))
+      (setq s3 (logxor (aref copy (+ 3 x4)) (cdr (cdr keyA))))
       (aset state x4
             (aref aes--s-boxes-dec (logxor (aref aes--le s0) (aref aes--lb s1)
                                            (aref aes--ld s2) (aref aes--l9 s3))))
@@ -452,8 +452,8 @@ in `aes-SubShiftMixKeys'."
       (aset state (% (+ 3 12 x4) Nb4)
             (aref aes--s-boxes-dec (logxor (aref aes--lb s0) (aref aes--ld s1)
                                            (aref aes--l9 s2) (aref aes--le s3))))
-      (set 'x4 (- x4 4))
-      (set 'keys (cdr keys)))))
+      (setq x4 (- x4 4))
+      (setq keys (cdr keys)))))
 
 ;;;; Key Expansion
 
