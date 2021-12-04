@@ -41,8 +41,9 @@
 ;; in the applications group.
 
 ;; Emacs compatibility:
-;; Version 25.3.1 is recommended
-;; Versions 25.3 and earlier have not been tested for quite some time
+;; Version 27 is recommended
+;; Version 26 has not been tested
+;; Version 25 and earlier are incompatible
 
 ;; This implementation allows additionally to the AES specification
 ;; blocklengths of 24 and 32 bytes.
