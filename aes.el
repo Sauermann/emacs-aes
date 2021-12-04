@@ -1011,7 +1011,7 @@ Read user entropy from keyboard and mouse to generate the random number
 sequence, if `aes-user-interaction-entropy' is non-nil; otherwise use the
 elisp function `random'.
 Display an approximation of how much entropy is already generated.
-Changing the `window-size' during the process will cause problems."
+Changing the window size during the process will cause problems."
   (unless border (setq border 256))
   (if (not aes-user-interaction-entropy)
       (let ((res ()) (i 0))
