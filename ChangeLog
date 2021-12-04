@@ -34,3 +34,7 @@
     Resolved Emacs 25 Compatibility issues
 1.0 Resolved Emacs 26 Compatibility issues
     Updated Documentation and Links
+1.1 Fix Checkdoc and package-lint problems
+    No longer erase messages buffer
+    Get rid of unused variables
+    Remove support for internal storage format V1.2
