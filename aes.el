@@ -1,4 +1,4 @@
-;;; aes.el --- Implementation of AES
+;;; aes.el --- Implementation of AES  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2008-2021 Markus Sauermann
 
@@ -479,7 +479,6 @@ entries of the same form as in KEY."
          (w (reverse key))
          (i Nk)
          (rcon (cons (cons 1 0) (cons 0 0)))
-         (Nk2 (lsh Nk 2))
          (border (* Nb (1+ (or Nr (+ (max Nb Nk) 6)))))
          (temp (cons (cons nil nil) (cons nil nil)))
          f)
@@ -907,7 +906,7 @@ length NK * 4.
 If V12 is non-nil, use the old key generation method."
   (if (not (member usage '("encryption" "decryption")))
       (error "Wrong argument in aes-key-from-passwd: \"%S\"" usage))
-  (let* (passwd passwdkeys (p ""))
+  (let* (passwd (p ""))
     (if (and (not aes-always-ask-for-passwords)
              aes-enable-plaintext-password-storage
              (assoc type-or-file aes--plaintext-passwords))
@@ -976,7 +975,7 @@ generation."
   "Shuffle array S randomly.
 This is done destructively in S.  The result is returned."
   (let ((i (length s))
-        j temp)
+        j)
     (while (< 1 i)
       (aset s (setq j (random i))
             (prog1 (aref s (setq i (1- i))) (aset s i (aref s j))))))
@@ -1219,9 +1218,7 @@ Generate a weak random initialization vector.
 Return t, if a buffer was encrypted and otherwise the encrypted string."
   (unless Nb (setq Nb aes-Nb))
   (unless Nk (setq Nk aes-Nk))
-  (let* ((buffer (or (get-buffer bos) (and (bufferp bos) bos)))
-         (length (if buffer (with-current-buffer buffer (point-max))
-                   (length bos))))
+  (let* ((buffer (or (get-buffer bos) (and (bufferp bos) bos))))
     (if (not (or (and (not type) (setq type aes-default-method))
                  (member type '("OCB" "CBC"))))
         (message "Wrong type.")
@@ -1296,8 +1293,6 @@ Return t, if a buffer was decrypted and otherwise the decrypted string."
             (Nb (string-to-number (match-string 4 sp)))
             (blocksize (lsh Nb 2))
             (Nk (string-to-number (match-string 5 sp)))
-            (Nr (+ (max Nk Nb) 6))
-            (um (match-string 6 sp))
             (multibyte (equal "M" (match-string 6 sp)))
             (header (match-string 0 sp))
             (res1 (substring sp (match-end 0)))
@@ -1419,6 +1414,7 @@ This allows saving a previously encrypted buffer in plaintext."
   "Function for auto decryption used in `format-alist'.
 WARNING: not compliant to `format-alist' in the sense that the function
 decrypts the whole file and not just the region indicated in X."
+  (if x (message "Region is not interpreted."))
   (if (aes-is-encrypted)
       (let ((mod-flag (buffer-modified-p)))
         (set (make-local-variable 'auto-save-default) nil)
@@ -1454,6 +1450,3 @@ decrypts the whole file and not just the region indicated in X."
 ;;;; Footer
 
 ;;; aes.el ends here
-
-;; Local Variables:
-;; lexical-binding: t
