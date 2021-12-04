@@ -1,11 +1,11 @@
 ;;; aes.el --- Implementation of AES
 
-;; Copyright (C) 2008-2017 Markus Sauermann
+;; Copyright (C) 2008-2021 Markus Sauermann
 
 ;; Author: Markus Sauermann <emacs-aes@sauermann-consulting.de>
 ;; Maintainer: Markus Sauermann <emacs-aes@sauermann-consulting.de>
 ;; Created: 15 Feb 2008
-;; Version: 0.9
+;; Version: 1.0
 ;; Keywords: data, tools
 ;; URL: https://github.com/Sauermann/emacs-aes
 
@@ -99,6 +99,7 @@
 ;; - don't handle padding in `aes-cbc-encrypt'.
 ;; - refactor `aes-user-entropy'
 ;; - test random number generator
+;; - make use of 32 bit integer support
 
 ;; References:
 ;;  [1] https://csrc.nist.gov/csrc/media/projects/cryptographic-standards-and-guidelines/documents/aes-development/rijndael-ammended.pdf
