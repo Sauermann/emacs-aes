@@ -38,3 +38,6 @@
     No longer erase messages buffer
     Get rid of unused variables
     Remove support for internal storage format V1.2
+    Retire contact Email address
+    Improve Docs
+    Fix lexical scoping problem
